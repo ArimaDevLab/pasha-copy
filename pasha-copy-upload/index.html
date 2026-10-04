@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#D7F52A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+:root { padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
+body { margin: 0; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+</style>
+<title>パシャコピー</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow working column. Screenshots flow in at the top as a numbered strip,
+   the joined text sits below as the main surface, actions directly under it. */
+:root {
+  --paper: #F5F6EC;
+  --surface: #FFFFFF;
+  --ink: #1B1B1B;
+  --muted: #666A55;
+  --line: #D9DCC6;
+  --marker: #D7F52A;
+  --marker-deep: #AACB00;
+  --on-marker: #1B1B1B;
+  --warn: #B4480A;
+  --font-display: "Dela Gothic One", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", sans-serif;
+  --font-data: "DM Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #16170F; --surface: #20221A; --ink: #ECEEDC; --muted: #A0A38C;
+    --line: #3A3D2D; --marker: #D7F52A; --marker-deep: #D7F52A; --on-marker: #1B1B1B;
+    --warn: #FFA368; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #16170F; --surface: #20221A; --ink: #ECEEDC; --muted: #A0A38C;
+  --line: #3A3D2D; --marker: #D7F52A; --marker-deep: #D7F52A; --on-marker: #1B1B1B;
+  --warn: #FFA368; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.7;
+}
+.wrap {
+  max-width: 44rem; margin: 0 auto;
+  padding-inline: 16px; padding-block: 20px 48px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+header { display: flex; flex-direction: column; gap: 4px; }
+h1 {
+  font-family: var(--font-display); font-weight: 400; font-size: 1.75rem; line-height: 1.3;
+  margin: 0; align-self: flex-start; padding-inline: 6px;
+  color: var(--on-marker);
+  background: linear-gradient(transparent 12%, var(--marker) 12%, var(--marker) 92%, transparent 92%);
+  transform: rotate(-1deg);
+}
+.lead { margin: 0; color: var(--muted); font-size: 0.9rem; }
+h2 {
+  font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; color: var(--muted);
+  margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+}
+h2 .count { font-family: var(--font-data); font-weight: 400; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+button, .btn {
+  font: inherit; font-weight: 700; font-size: 0.95rem; color: var(--ink);
+  background: var(--surface); border: 1.5px solid var(--ink); border-radius: 6px;
+  padding: 10px 16px; min-height: 44px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+button.primary, .btn.primary { background: var(--marker); color: var(--on-marker); border-color: var(--on-marker); }
+:root[data-theme="dark"] button.primary, :root[data-theme="dark"] .btn.primary { border-color: var(--marker); }
+button.quiet { border-color: var(--line); font-weight: 500; }
+button:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible, .btn:focus-within, textarea:focus-visible, .hist button:focus-visible {
+  outline: 3px solid var(--marker-deep); outline-offset: 2px;
+}
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* intake */
+.drop {
+  border: 1.5px dashed var(--muted); border-radius: 8px; padding: 16px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.drop.over { border-style: solid; border-color: var(--marker-deep); background: var(--surface); }
+.drop p { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.btn input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.btn { position: relative; }
+
+/* strip */
+.strip { display: flex; gap: 10px; overflow-x: auto; padding-block: 4px 8px; }
+.shot { flex: 0 0 auto; width: 84px; display: flex; flex-direction: column; gap: 4px; }
+.shot .pic {
+  position: relative; width: 84px; height: 140px; border: 1.5px solid var(--line);
+  border-radius: 4px; overflow: hidden; background: var(--surface);
+}
+.shot img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+.shot .no {
+  position: absolute; top: 0; left: 0; background: var(--marker); color: var(--on-marker);
+  font-family: var(--font-data); font-size: 0.75rem; font-weight: 500; padding: 0 6px; line-height: 1.6;
+}
+.shot .bar { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--marker-deep); width: 0; }
+.shot .state { font-size: 0.7rem; color: var(--muted); line-height: 1.3; min-height: 1.3em; }
+.shot .state.err { color: var(--warn); }
+.shot .ctl { display: flex; gap: 2px; }
+.shot .ctl button {
+  flex: 1; min-height: 30px; padding: 0; font-size: 0.8rem; border: 1px solid var(--line); border-radius: 4px; font-weight: 500;
+}
+
+.status { font-size: 0.85rem; color: var(--muted); min-height: 1.7em; margin: 0; }
+.status.err { color: var(--warn); }
+label.check { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; min-height: 44px; cursor: pointer; }
+label.check input { width: 20px; height: 20px; accent-color: var(--marker-deep); }
+
+/* editor */
+textarea {
+  width: 100%; min-height: 18rem; resize: vertical;
+  font: inherit; font-size: 1rem; line-height: 1.85; color: var(--ink);
+  background: var(--surface); border: 1.5px solid var(--ink); border-radius: 6px; padding: 14px;
+}
+textarea::placeholder { color: var(--muted); }
+.report { margin: 0; padding: 0; list-style: none; font-size: 0.8rem; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+.report b { font-family: var(--font-data); font-weight: 500; color: var(--ink); }
+details { font-size: 0.8rem; color: var(--muted); }
+summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+details pre {
+  margin: 4px 0 0; padding: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px;
+  font-family: var(--font-body); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); max-height: 20rem; overflow-y: auto;
+}
+.notice {
+  border-left: 4px solid var(--marker-deep); padding: 8px 12px; background: var(--surface);
+  font-size: 0.85rem; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
+}
+
+/* history */
+.hist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.hist li { border-bottom: 1px solid var(--line); }
+.hist button {
+  width: 100%; border: 0; background: none; border-radius: 0; text-align: left; justify-content: flex-start;
+  font-weight: 400; padding: 10px 2px; gap: 12px; align-items: baseline;
+}
+.hist time { font-family: var(--font-data); font-size: 0.75rem; color: var(--muted); flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.hist span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
+.empty { font-size: 0.85rem; color: var(--muted); margin: 0; }
+footer { font-size: 0.75rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; }
+footer p { margin: 0; }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>パシャコピー</h1>
+    <p class="lead">スクショを何枚でも選ぶと、文字を読み取って1本の文章につなげます。</p>
+  </header>
+
+  <section aria-label="スクショを追加">
+    <div class="drop" id="drop">
+      <div class="row">
+        <label class="btn primary">スクショを選ぶ
+          <input id="file" type="file" accept="image/*" multiple>
+        </label>
+        <button id="sample" class="quiet" type="button">サンプル3枚で試す</button>
+      </div>
+      <p>複数枚まとめて選べます。パソコンではドラッグ＆ドロップや貼り付け（Ctrl+V）も使えます。</p>
+    </div>
+  </section>
+
+  <section id="shotsSec" hidden>
+    <h2>読み込んだスクショ <span class="count" id="shotCount"></span></h2>
+    <div class="strip" id="strip"></div>
+    <div class="row">
+      <label class="check"><input id="dedupe" type="checkbox" checked> 重なった行を自動で削る</label>
+      <button id="clear" class="quiet" type="button">全部消す</button>
+    </div>
+  </section>
+
+  <p class="status" id="status" role="status"></p>
+
+  <section>
+    <h2>つなげた文章 <span class="count" id="charCount">0文字</span></h2>
+    <div class="notice" id="stale" hidden>
+      <span>並び順や設定を変えました。</span>
+      <button id="remerge" type="button">つなげ直す（手で直した内容は消えます）</button>
+    </div>
+    <textarea id="text" placeholder="ここに読み取った文章が出ます。そのまま編集できます。" spellcheck="false"></textarea>
+    <ul class="report" id="report"></ul>
+    <details id="raw" hidden><summary>画像ごとの読み取り結果を見る</summary><pre></pre></details>
+    <div class="row">
+      <button id="copy" class="primary" type="button">コピー</button>
+      <button id="join" class="quiet" type="button">改行を詰める</button>
+      <button id="undo" class="quiet" type="button" hidden>元に戻す</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>コピー履歴 <span class="count" id="histCount"></span></h2>
+    <p class="empty" id="histEmpty">まだ履歴はありません。コピーするとここに残ります（この端末の中だけ）。</p>
+    <ul class="hist" id="hist"></ul>
+    <div class="row"><button id="histClear" class="quiet" type="button" hidden>履歴を消す</button></div>
+  </section>
+
+  <footer><p>画像と文章はこの端末の中だけで処理され、外部には送られません。</p></footer>
+</div>
+
+<script src="ocr/tesseract.min.js"></script>
+<script>
+"use strict";
+/* ---------- text logic (pure) ---------- */
+const JP = "\\u3040-\\u30ff\\u3400-\\u9fff\\uff00-\\uffef\\u3000-\\u303f";
+const reGapAfter = new RegExp("([" + JP + "])[ \\t]+", "g");
+const reGapBefore = new RegExp("[ \\t]+([" + JP + "])", "g");
+const reClock = /^\d{1,2}:\d{2}(\s|$)/;
+
+function cleanLine(s) {
+  // The engine puts spaces around Japanese characters; real Japanese text has none.
+  return s.replace(/[ \t\u3000]+/g, " ").replace(reGapAfter, "$1").replace(reGapBefore, "$1").trim();
+}
+function cleanText(raw) {
+  const lines = raw.split(/\r?\n/).map(cleanLine);
+  // Status bar (clock, battery) is the first thing on every screenshot.
+  const first = lines.findIndex(l => l !== "");
+  if (first >= 0 && reClock.test(lines[first]) && lines[first].length <= 30) lines.splice(0, first + 1);
+  while (lines.length && lines[0] === "") lines.shift();
+  const out = [];
+  for (const l of lines) { if (l === "" && (out.length === 0 || out[out.length - 1] === "")) continue; out.push(l); }
+  while (out.length && out[out.length - 1] === "") out.pop();
+  return out;
+}
+const key = s => s.normalize("NFKC").replace(/\s+/g, "");
+
+function lev(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+function same(a, b) {
+  if (a === b) return a.length > 0;
+  // Short lines (times, prices, names) differ by one character all the time; only trust exact matches.
+  if (a.length < 6 || b.length < 6) return false;
+  // Rows of a list or table often differ only in their numbers, so the numbers must agree.
+  if (a.replace(/\D/g, "") !== b.replace(/\D/g, "")) return false;
+  const max = Math.max(a.length, b.length);
+  if (Math.abs(a.length - b.length) > max * 0.15) return false;
+  return 1 - lev(a, b) / max >= 0.85;
+}
+
+/* Work out how page B continues page A (two scrolled screenshots).
+   Only two things are ever dropped: bars that sit in the same place on both pages, and the
+   lines at the top of B that repeat the bottom of A. Everything else is kept.
+   Returns {endA, startB, removed, overlap}: keep A[0..endA) then B[startB..). */
+function planJoin(A, B) {
+  // Blank lines come and go between readings, so compare text lines only and map back.
+  const ia = [], ib = [];
+  A.forEach((l, i) => { if (l) ia.push(i); }); B.forEach((l, i) => { if (l) ib.push(i); });
+  const ka = ia.map(i => key(A[i])), kb = ib.map(i => key(B[i]));
+  const n = ka.length, m = kb.length;
+  if (!n || !m) return { endA: A.length, startB: 0, removed: 0, overlap: false };
+  let H = 0; while (H < Math.min(n, m) && same(ka[H], kb[H])) H++;           // shared header
+  if (H === m) return { endA: A.length, startB: B.length, removed: m, overlap: true };
+  let F = 0; while (F < Math.min(n, m) - H && same(ka[n - 1 - F], kb[m - 1 - F])) F++; // shared footer
+  const a = ka.slice(H, n - F), b = kb.slice(H, m - F);
+  let best = null;
+  for (let d = Math.max(0, a.length - 80); d < a.length; d++) {
+    // Slide B under A so that B's first line sits on A's line d, and count the lines that agree.
+    const L = Math.min(a.length - d, b.length);
+    // Weigh by characters: a long sentence agreeing is evidence, a repeated "既読" is not.
+    let chars = 0, all = 0, first = -1, last = -1;
+    for (let k = 0; k < L; k++) {
+      all += b[k].length;
+      if (same(a[d + k], b[k])) { chars += b[k].length; last = k; if (first < 0) first = k; }
+    }
+    if (chars < 6) continue;
+    if (first > 3 || L - 1 - last > 4 || chars / all < 0.7) continue;   // must be bottom-of-A onto top-of-B
+    const score = chars / all * Math.log(1 + chars);
+    if (!best || score > best.score) best = { score, d, last, inside: L < a.length - d };
+  }
+  if (best && best.inside) return { endA: A.length, startB: B.length, removed: m, overlap: true };
+  if (best) return { endA: ia[H + best.d + best.last] + 1, startB: ib[H + best.last] + 1, removed: H + best.last + 1, overlap: true };
+  return { endA: F ? ia[n - F] : A.length, startB: H ? ib[H] : 0, removed: H, overlap: false };
+}
+
+function mergeAll(pages, dedupe) {
+  let acc = [];
+  const report = [];
+  pages.forEach((lines, n) => {
+    if (n === 0) { acc = lines.slice(); return; }
+    let p = dedupe ? planJoin(acc, lines) : { endA: acc.length, startB: 0, removed: 0, overlap: false };
+    let first = acc, second = lines, swapped = false;
+    if (dedupe && !p.overlap) {
+      // No overlap this way round; if the new page leads into what we have, it belongs in front.
+      const q = planJoin(lines, acc);
+      if (q.overlap) { p = q; first = lines; second = acc; swapped = true; }
+    }
+    const head = first.slice(0, p.endA), tail = second.slice(p.startB);
+    while (head.length && head[head.length - 1] === "") head.pop();
+    while (tail.length && tail[0] === "") tail.shift();
+    if (!p.overlap && head.length && tail.length) head.push("");
+    acc = head.concat(tail);
+    report.push({ page: n + 1, removed: p.removed, overlap: p.overlap, swapped });
+  });
+  return { text: acc.join("\n"), report };
+}
+
+function joinLines(text) {
+  // A line that runs the full width was wrapped by the screen; a short one ended on purpose.
+  const lines = text.split("\n").map(l => l.trim());
+  const wide = l => { let w = 0; for (const ch of l) w += ch.charCodeAt(0) > 0xff ? 2 : 1; return w; };
+  const full = Math.max(0, ...lines.map(wide));
+  const jp = new RegExp("[" + JP + "]");
+  let out = "", prev = "";
+  for (const l of lines) {
+    if (!l) { if (out && !out.endsWith("\n\n")) out += out.endsWith("\n") ? "\n" : "\n\n"; prev = ""; continue; }
+    if (!prev) out += l;
+    else if (wide(prev) >= full * 0.9 && !/[。！？!?]$/.test(prev)) out += (!jp.test(prev.slice(-1)) && !jp.test(l[0]) ? " " : "") + l;
+    else out += "\n" + l;
+    prev = l;
+  }
+  return out.trim();
+}
+
+/* ---------- state ---------- */
+const $ = id => document.getElementById(id);
+const el = { file: $("file"), drop: $("drop"), strip: $("strip"), shotsSec: $("shotsSec"), shotCount: $("shotCount"),
+  status: $("status"), text: $("text"), report: $("report"), charCount: $("charCount"), stale: $("stale"),
+  dedupe: $("dedupe"), copy: $("copy"), join: $("join"), undo: $("undo"), hist: $("hist"),
+  histEmpty: $("histEmpty"), histCount: $("histCount"), histClear: $("histClear") };
+
+let shots = [];      // {id, name, url, blob, status, lines, progress}
+let seq = 0, busy = false, edited = false, undoText = null, worker = null, workerLoading = null, current = null;
+
+function setStatus(msg, err) { el.status.textContent = msg || ""; el.status.classList.toggle("err", !!err); }
+function setText(t) { el.text.value = t; edited = false; undoText = null; el.undo.hidden = true; fit(); }
+function fit() {
+  el.charCount.textContent = el.text.value.replace(/\s/g, "").length + "文字";
+  el.text.style.height = "auto";
+  el.text.style.height = Math.max(el.text.scrollHeight + 4, 288) + "px";
+}
+
+/* ---------- intake ---------- */
+function addFiles(files) {
+  const imgs = Array.from(files).filter(f => f.type.startsWith("image/"));
+  if (!imgs.length) { setStatus("画像ファイルが見つかりませんでした。", true); return; }
+  // Screenshots are named and dated in the order taken, so oldest first is reading order.
+  imgs.sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0) || a.name.localeCompare(b.name, "ja", { numeric: true }));
+  for (const f of imgs) shots.push({ id: ++seq, name: f.name, blob: f, url: URL.createObjectURL(f), status: "wait", lines: null, progress: 0 });
+  renderStrip(); pump();
+}
+el.file.addEventListener("change", () => { addFiles(el.file.files); el.file.value = ""; });
+["dragenter", "dragover"].forEach(t => el.drop.addEventListener(t, e => { e.preventDefault(); el.drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => el.drop.addEventListener(t, e => { e.preventDefault(); el.drop.classList.remove("over"); }));
+el.drop.addEventListener("drop", e => addFiles(e.dataTransfer.files));
+document.addEventListener("paste", e => {
+  const files = Array.from(e.clipboardData?.files || []);
+  if (files.some(f => f.type.startsWith("image/"))) { e.preventDefault(); addFiles(files); }
+});
+
+/* ---------- strip ---------- */
+const stateLabel = s => ({ wait: "待機中", run: "読み取り中", done: s.lines && s.lines.length ? s.lines.length + "行" : "文字なし", err: "失敗" })[s.status];
+function renderStrip() {
+  el.shotsSec.hidden = shots.length === 0;
+  el.shotCount.textContent = shots.length + "枚";
+  el.strip.textContent = "";
+  shots.forEach((s, i) => {
+    const d = document.createElement("div"); d.className = "shot"; d.dataset.id = s.id;
+    d.innerHTML = '<div class="pic"><img alt=""><span class="no"></span><span class="bar"></span></div>' +
+      '<div class="state"></div><div class="ctl">' +
+      '<button type="button" data-act="left" aria-label="前へ移動">←</button>' +
+      '<button type="button" data-act="right" aria-label="後ろへ移動">→</button>' +
+      '<button type="button" data-act="del" aria-label="削除">×</button></div>';
+    d.querySelector("img").src = s.url;
+    d.querySelector("img").alt = (i + 1) + "枚目のスクショ";
+    d.querySelector(".no").textContent = i + 1;
+    d.querySelector('[data-act="left"]').disabled = i === 0;
+    d.querySelector('[data-act="right"]').disabled = i === shots.length - 1;
+    el.strip.appendChild(d);
+    paintShot(s);
+  });
+}
+function paintShot(s) {
+  const d = el.strip.querySelector('[data-id="' + s.id + '"]'); if (!d) return;
+  const st = d.querySelector(".state");
+  st.textContent = stateLabel(s); st.classList.toggle("err", s.status === "err");
+  d.querySelector(".bar").style.width = (s.status === "run" ? Math.round(s.progress * 100) : 0) + "%";
+}
+el.strip.addEventListener("click", e => {
+  const b = e.target.closest("button[data-act]"); if (!b) return;
+  const id = +b.closest(".shot").dataset.id, i = shots.findIndex(s => s.id === id);
+  if (b.dataset.act === "del") { URL.revokeObjectURL(shots[i].url); shots.splice(i, 1); }
+  else { const k = b.dataset.act === "left" ? i - 1 : i + 1; [shots[i], shots[k]] = [shots[k], shots[i]]; }
+  renderStrip(); afterChange();
+});
+$("clear").addEventListener("click", () => {
+  shots.forEach(s => URL.revokeObjectURL(s.url)); shots = [];
+  renderStrip(); setText(""); el.report.textContent = ""; $("raw").hidden = true; el.stale.hidden = true; setStatus("");
+});
+el.dedupe.addEventListener("change", afterChange);
+$("remerge").addEventListener("click", () => merge(true));
+
+/* ---------- OCR ---------- */
+function getWorker() {
+  if (worker) return Promise.resolve(worker);
+  if (workerLoading) return workerLoading;
+  const base = new URL("ocr/", document.baseURI).href;
+  setStatus("文字認識の準備中です（初回だけ数秒〜十数秒かかります）");
+  // The language data ships beside the page as base64 text and is handed to the engine directly.
+  workerLoading = fetch(base + "jpn.b64.txt").then(r => { if (!r.ok) throw new Error("lang " + r.status); return r.text(); })
+    .then(t => {
+      const bin = atob(t.trim()), data = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i);
+      return Tesseract.createWorker([{ code: "jpn", data }], 1, {
+        workerPath: base + "worker.min.js", corePath: base, workerBlobURL: false, cacheMethod: "none",
+        logger: m => { if (m.status === "recognizing text" && current) { current.progress = m.progress; paintShot(current); } }
+      });
+    }).then(w => (worker = w)).catch(e => { workerLoading = null; throw e; });
+  return workerLoading;
+}
+
+// Dark-mode screenshots read much better once flipped to dark-on-light.
+async function prepare(blob) {
+  const bmp = await createImageBitmap(blob);
+  const c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height;
+  const ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(bmp, 0, 0);
+  const img = ctx.getImageData(0, 0, c.width, c.height), d = img.data;
+  let sum = 0, n = 0;
+  for (let p = 0; p < d.length; p += 4 * 97) { sum += d[p] * 0.299 + d[p + 1] * 0.587 + d[p + 2] * 0.114; n++; }
+  if (sum / n < 110) {
+    for (let p = 0; p < d.length; p += 4) { d[p] = 255 - d[p]; d[p + 1] = 255 - d[p + 1]; d[p + 2] = 255 - d[p + 2]; }
+    ctx.putImageData(img, 0, 0);
+  }
+  return c;
+}
+
+async function pump() {
+  if (busy) return; busy = true;
+  try {
+    let s;
+    while ((s = shots.find(x => x.status === "wait"))) {
+      const w = await getWorker();
+      if (!shots.includes(s)) continue;
+      current = s; s.status = "run"; s.progress = 0; paintShot(s);
+      const idx = shots.indexOf(s) + 1;
+      setStatus(idx + "枚目を読み取り中（全" + shots.length + "枚）");
+      try {
+        const canvas = await prepare(s.blob);
+        const res = await w.recognize(canvas);
+        s.lines = cleanText(res.data.text); s.status = "done";
+      } catch (e) { s.status = "err"; s.lines = []; console.error(e); }
+      current = null; paintShot(s);
+    }
+    setStatus(shots.length ? "読み取りが終わりました。" : "");
+    afterChange();
+  } catch (e) {
+    console.error(e);
+    setStatus("文字認識エンジンを起動できませんでした。通信状況を確認して、ページを開き直してください。", true);
+  } finally { busy = false; }
+}
+
+/* ---------- merge ---------- */
+function afterChange() {
+  if (shots.some(s => s.status === "wait" || s.status === "run")) return;
+  if (edited && el.text.value.trim()) { el.stale.hidden = false; return; }
+  merge(true);
+}
+function merge() {
+  el.stale.hidden = true;
+  const done = shots.filter(s => s.status === "done" && s.lines.length);
+  const { text, report } = mergeAll(done.map(s => s.lines), el.dedupe.checked);
+  setText(text);
+  el.report.textContent = "";
+  report.forEach(r => {
+    const li = document.createElement("li");
+    const no = shots.indexOf(done[r.page - 1]) + 1;
+    li.innerHTML = r.swapped
+      ? "<b></b>枚目：前の画像より先の内容だったので、順番を入れ替えて重なった <b></b>行を削りました"
+      : r.overlap
+      ? "<b></b>枚目：前の画像と重なった <b></b>行を削りました"
+      : "<b></b>枚目：重なりが見つからなかったので、そのまま続けました";
+    const bs = li.querySelectorAll("b"); bs[0].textContent = no; if (bs[1]) bs[1].textContent = r.removed;
+    el.report.appendChild(li);
+  });
+  const raw = $("raw");
+  raw.hidden = done.length === 0;
+  raw.querySelector("pre").textContent = done.map(s => "── " + (shots.indexOf(s) + 1) + "枚目 ──\n" + s.lines.join("\n")).join("\n\n");
+}
+
+/* ---------- editor actions ---------- */
+el.text.addEventListener("input", () => { edited = true; fit(); });
+el.join.addEventListener("click", () => {
+  if (!el.text.value.trim()) return;
+  undoText = el.text.value; el.text.value = joinLines(el.text.value); edited = true; el.undo.hidden = false; fit();
+});
+el.undo.addEventListener("click", () => { if (undoText != null) { el.text.value = undoText; undoText = null; el.undo.hidden = true; fit(); } });
+el.copy.addEventListener("click", async () => {
+  const t = el.text.value; if (!t.trim()) { setStatus("コピーする文章がまだありません。", true); return; }
+  try { await navigator.clipboard.writeText(t); flash("コピーしました"); }
+  catch (e) { el.text.focus(); el.text.select(); setStatus("自動でコピーできませんでした。全文を選択したので、長押しメニューからコピーしてください。", true); }
+  saveHistory(t);
+});
+function flash(msg) { const o = "コピー"; el.copy.textContent = msg; setTimeout(() => (el.copy.textContent = o), 1600); }
+
+/* ---------- history (this device only) ---------- */
+const HKEY = "pashacopy.history";
+function loadHistory() { try { return JSON.parse(localStorage.getItem(HKEY) || "[]"); } catch (e) { return []; } }
+let memHistory = loadHistory();
+function saveHistory(text) {
+  if (memHistory[0] && memHistory[0].text === text) return;
+  memHistory.unshift({ t: Date.now(), text }); memHistory = memHistory.slice(0, 30);
+  try { localStorage.setItem(HKEY, JSON.stringify(memHistory)); } catch (e) {}
+  renderHistory();
+}
+function renderHistory() {
+  el.hist.textContent = "";
+  el.histEmpty.hidden = memHistory.length > 0; el.histClear.hidden = memHistory.length === 0;
+  el.histCount.textContent = memHistory.length ? memHistory.length + "件" : "";
+  const p = n => String(n).padStart(2, "0");
+  memHistory.forEach((h, i) => {
+    const li = document.createElement("li"), b = document.createElement("button"), tm = document.createElement("time"), sp = document.createElement("span");
+    const d = new Date(h.t); tm.textContent = p(d.getMonth() + 1) + "/" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+    sp.textContent = h.text.slice(0, 40).replace(/\n/g, " ");
+    b.type = "button"; b.dataset.i = i; b.append(tm, sp); li.appendChild(b); el.hist.appendChild(li);
+  });
+}
+el.hist.addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  setText(memHistory[+b.dataset.i].text); el.report.textContent = ""; edited = true;
+  el.text.scrollIntoView({ block: "center" });
+});
+el.histClear.addEventListener("click", () => { memHistory = []; try { localStorage.removeItem(HKEY); } catch (e) {} renderHistory(); });
+
+/* ---------- sample: three scrolled shots of one notice, drawn on the fly ---------- */
+const SAMPLE = ["秋の防災訓練のお知らせ", "", "みどり町自治会では、今年も秋の防災訓練を", "行います。初めての方も歓迎です。", "",
+  "日時：10月18日（日）午前9時から11時", "場所：みどり町第二公園（雨天は集会所）", "持ち物：軍手、飲み物、歩きやすい靴", "",
+  "当日の流れ", "9時00分　公園に集合、班ごとに点呼", "9時20分　消火器の使い方を体験", "10時00分　炊き出しの手順を確認",
+  "10時40分　避難経路を歩いて確かめる", "", "参加できる方は、10月10日までに", "各班の班長へ人数をお知らせください。",
+  "小学生以下のお子さんは保護者と一緒に", "ご参加ください。", "", "問い合わせ先：自治会防災係　佐々木", "電話：03-5550-0142"];
+function drawSample(from, to, clock) {
+  const c = document.createElement("canvas"); c.width = 720; c.height = 1180;
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 720, 1180);
+  x.fillStyle = "#222"; x.font = "26px sans-serif"; x.fillText(clock, 32, 44); x.fillText("82%", 630, 44);
+  x.font = "bold 34px sans-serif"; x.fillText("自治会だより", 32, 120);
+  x.fillStyle = "#ccc"; x.fillRect(0, 150, 720, 2);
+  x.fillStyle = "#111"; x.font = "32px sans-serif";
+  let y = 220; for (let i = from; i < to; i++) { if (SAMPLE[i]) x.fillText(SAMPLE[i], 32, y); y += SAMPLE[i] ? 64 : 36; }
+  return new Promise(r => c.toBlob(b => r(b), "image/png"));
+}
+$("sample").addEventListener("click", async () => {
+  const parts = [[0, 11, "21:46"], [7, 17, "21:47"], [13, 22, "21:48"]];
+  const now = Date.now(), files = [];
+  for (let i = 0; i < parts.length; i++) {
+    const b = await drawSample(parts[i][0], parts[i][1], parts[i][2]);
+    files.push(new File([b], "サンプル_" + (i + 1) + ".png", { type: "image/png", lastModified: now + i }));
+  }
+  addFiles(files);
+});
+
+/* ---------- installed app: take screenshots sent from the Android share sheet ---------- */
+async function takeShared() {
+  try {
+    const cache = await caches.open("pasha-shared"), keys = await cache.keys(), files = [];
+    for (const k of keys) {
+      const r = await cache.match(k), b = await r.blob();
+      files.push(new File([b], decodeURIComponent(r.headers.get("x-name") || "shared.png"),
+        { type: b.type || "image/png", lastModified: +r.headers.get("x-time") || Date.now() }));
+      await cache.delete(k);
+    }
+    history.replaceState(null, "", location.pathname);
+    if (files.length) addFiles(files);
+    else setStatus("共有された画像を受け取れませんでした。もう一度共有してください。", true);
+  } catch (e) { console.error(e); setStatus("共有された画像を受け取れませんでした。もう一度共有してください。", true); }
+}
+if (document.querySelector('link[rel="manifest"]') && "serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(e => console.error(e));
+  if (new URLSearchParams(location.search).has("shared")) takeShared();
+}
+
+renderHistory(); fit();
+</script>
+</body>
+</html>
