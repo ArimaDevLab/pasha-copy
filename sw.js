@@ -1,5 +1,5 @@
 // パシャコピー service worker: offline shell + receiving screenshots from the share sheet.
-const SHELL = "pasha-shell-v1";
+const SHELL = "pasha-shell-v2";
 const SHARED = "pasha-shared";
 const ASSETS = [
   "./", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png",
