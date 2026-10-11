@@ -102,7 +102,10 @@ button:focus-visible, .btn:focus-within, textarea:focus-visible, .hist button:fo
   position: relative; width: 84px; height: 140px; border: 1.5px solid var(--line);
   border-radius: 4px; overflow: hidden; background: var(--surface);
 }
-.shot img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+.shot button.pic { display: block; padding: 0; min-height: 0; cursor: pointer; font-weight: 400; }
+.shot .fit { position: relative; display: block; width: 100%; }
+.shot img { width: 100%; height: auto; display: block; }
+.shot .marks i, .box { position: absolute; background: #000; }
 .shot .no {
   position: absolute; top: 0; left: 0; background: var(--marker); color: var(--on-marker);
   font-family: var(--font-data); font-size: 0.75rem; font-weight: 500; padding: 0 6px; line-height: 1.6;
@@ -119,6 +122,37 @@ button:focus-visible, .btn:focus-within, textarea:focus-visible, .hist button:fo
 .status.err { color: var(--warn); }
 label.check { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; min-height: 44px; cursor: pointer; }
 label.check input { width: 20px; height: 20px; accent-color: var(--marker-deep); }
+
+/* redaction */
+.cats { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.cats b { font-family: var(--font-data); font-weight: 500; font-variant-numeric: tabular-nums; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+.field input {
+  font: inherit; font-size: 1rem; color: var(--ink); background: var(--surface);
+  border: 1.5px solid var(--ink); border-radius: 6px; padding: 10px 12px; min-height: 44px; width: 100%;
+}
+.field input:focus-visible { outline: 3px solid var(--marker-deep); outline-offset: 2px; }
+.hint { margin: 0; font-size: 0.8rem; color: var(--muted); }
+dialog {
+  width: 100vw; max-width: 44rem; height: 100dvh; max-height: 100dvh; margin: 0 auto; padding: 0; border: 0;
+  background: var(--paper); color: var(--ink);
+}
+dialog[open] { display: flex; flex-direction: column; }
+dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+.edbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px 8px; }
+.edbar b { font-family: var(--font-data); font-weight: 500; }
+.edtools { padding: 0 16px 10px; }
+.edtools button[aria-pressed="true"] { background: var(--marker); color: var(--on-marker); border-color: var(--on-marker); }
+.edscroll { flex: 1; min-height: 0; overflow: auto; padding: 0 16px 24px; }
+.stage { position: relative; user-select: none; -webkit-user-select: none; }
+.stage.adding { touch-action: none; cursor: crosshair; }
+.stage img { display: block; width: 100%; }
+button.box { border: 0; border-radius: 0; padding: 0; min-height: 0; outline: 1px solid rgba(255, 255, 255, 0.55); }
+button.box.off { background: transparent; outline: 2px dashed var(--warn); }
+.box.draft { background: rgba(0, 0, 0, 0.55); pointer-events: none; }
+/* could not be read (often sliced by the screen edge): shown, not hidden, until the user decides */
+.shot .marks i.w, button.box.warn { background: rgba(255, 208, 0, 0.5); }
+button.box.warn { outline: 2px dashed #8A6A00; }
 
 /* editor */
 textarea {
@@ -162,7 +196,7 @@ footer p { margin: 0; }
 <div class="wrap">
   <header>
     <h1>パシャコピー</h1>
-    <p class="lead">スクショを何枚でも選ぶと、文字を読み取って1本の文章につなげます。</p>
+    <p class="lead">スクショを何枚でも選ぶと、文字を読み取って1本の文章につなげます。個人情報を黒塗りして1つのPDFにもできます。</p>
   </header>
 
   <section aria-label="スクショを追加">
@@ -186,6 +220,24 @@ footer p { margin: 0; }
     </div>
   </section>
 
+  <section id="redactSec" hidden>
+    <h2>個人情報を黒塗り <span class="count" id="redactCount"></span></h2>
+    <div class="cats" id="cats"></div>
+    <label class="field">ほかに隠したい言葉（名前や会社名など。スペースか「、」で区切る）
+      <input id="words" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="例：佐々木、みどり町">
+    </label>
+    <div class="notice" id="warnBox" hidden>
+      <span id="warnMsg"></span>
+      <button id="warnAll" type="button">まとめて隠す</button>
+    </div>
+    <label class="check"><input id="strict" type="checkbox"> 読み取れなかった行（端で切れた行など）も自動で隠す（厳重モード）</label>
+    <p class="hint">スクショをタップすると、黒塗りの解除や追加ができます。自動検出は見落とすことがあるので、保存する前に必ず確認してください。</p>
+    <div class="row">
+      <button id="pdf" class="primary" type="button">黒塗りしてPDFで保存</button>
+      <button id="imgs" class="quiet" type="button">画像で保存</button>
+    </div>
+  </section>
+
   <p class="status" id="status" role="status"></p>
 
   <section>
@@ -201,6 +253,7 @@ footer p { margin: 0; }
       <button id="copy" class="primary" type="button">コピー</button>
       <button id="share" type="button" hidden>共有</button>
       <button id="join" class="quiet" type="button">改行を詰める</button>
+      <button id="mask" class="quiet" type="button">個人情報を伏せ字に</button>
       <button id="undo" class="quiet" type="button" hidden>元に戻す</button>
     </div>
   </section>
@@ -212,8 +265,24 @@ footer p { margin: 0; }
     <div class="row"><button id="histClear" class="quiet" type="button" hidden>履歴を消す</button></div>
   </section>
 
-  <footer><p>画像と文章はこの端末の中だけで処理され、外部には送られません。</p></footer>
+  <footer><p>画像と文章はこの端末の中だけで処理され、外部には送られません。隠したい言葉の設定も、この端末の中だけに保存されます。</p></footer>
 </div>
+
+<dialog id="ed" aria-labelledby="edTitle">
+  <div class="edbar">
+    <b id="edTitle"></b>
+    <span class="row">
+      <button id="edPrev" class="quiet" type="button" aria-label="前の画像">←</button>
+      <button id="edNext" class="quiet" type="button" aria-label="次の画像">→</button>
+      <button id="edClose" class="primary" type="button">閉じる</button>
+    </span>
+  </div>
+  <div class="edtools row">
+    <button id="edAdd" class="quiet" type="button" aria-pressed="false">範囲を足す</button>
+    <p class="hint" id="edHint"></p>
+  </div>
+  <div class="edscroll"><div class="stage" id="stage"><img id="edImg" alt="" draggable="false"></div></div>
+</dialog>
 
 <script src="ocr/tesseract.min.js"></script>
 <script>
@@ -341,14 +410,233 @@ function joinLines(text) {
   return out.trim();
 }
 
+/* ---------- personal info detection (pure) ----------
+   Works on one line of text at a time and returns character ranges; the caller maps them to
+   pixels (screenshots) or to the text itself (the joined text). */
+const CATS = [["tel", "電話番号"], ["mail", "メール"], ["addr", "住所・郵便番号"], ["name", "名前"], ["num", "カード・口座などの番号"]];
+const CAT_LABEL = Object.assign({ word: "指定した言葉", manual: "手で足した範囲", edge: "読み取れなかった行" }, Object.fromEntries(CATS));
+const HY = "\\-‐‑‒–—―−ーｰ一";                 // everything the engine may read a hyphen as
+const SEP = "[ " + HY + "]{0,3}";
+const KJ = "\\u4e00-\\u9fff々";
+const PREF = "(?:北海道|東京都|(?:大阪|京都)府|(?:青森|岩手|宮城|秋田|山形|福島|茨城|栃木|群馬|埼玉|千葉|神奈川|新潟|富山|石川|福井|山梨|長野|岐阜|静岡|愛知|三重|滋賀|兵庫|奈良|和歌山|鳥取|島根|岡山|広島|山口|徳島|香川|愛媛|高知|福岡|佐賀|長崎|熊本|大分|宮崎|鹿児島|沖縄)県)";
+const RULES = [
+  { cat: "mail", re: /[A-Za-z0-9._%+\-]+ ?@ ?[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+/g },
+  { cat: "tel", digits: [10, 12], re: new RegExp("(?:\\+81" + SEP + "\\d{1,4}|\\(?0\\d{1,4}\\)?)" + SEP + "\\d{1,4}" + SEP + "\\d{3,4}", "g") },
+  { cat: "num", digits: [16, 16], re: new RegExp("\\d{4}" + SEP + "\\d{4}" + SEP + "\\d{4}" + SEP + "\\d{4}", "g") },
+  { cat: "num", digits: [12, 12], re: new RegExp("\\d{4}" + SEP + "\\d{4}" + SEP + "\\d{4}", "g") },
+  { cat: "num", group: true, re: /(?:口座番号|口座|普通|当座)[ :]{0,3}(\d{6,8})/g },
+  // A postal code needs its mark or its hyphen; seven bare digits could be anything.
+  { cat: "addr", digits: [7, 7], re: new RegExp("〒 ?\\d{3}" + SEP + "\\d{4}|\\d{3} ?[" + HY + "] ?\\d{4}", "g") },
+  // Street address: municipality, then a block number such as 1-2-3 or 1丁目.
+  { cat: "addr", re: new RegExp(PREF + "?[" + KJ + "]{1,6}[市区郡][" + KJ + "ぁ-んァ-ヶー]{0,12}?\\d{1,4}(?:丁目|番地?|[" + HY + "]\\d)(?:\\d|丁目|番地?|号|の|[" + HY + "](?=\\d))*", "g") },
+  { cat: "addr", re: new RegExp(PREF + "(?:[" + KJ + "]{1,6}[市区町村郡]){1,2}", "g") },
+  // Names are only recognisable from what surrounds them: an honorific after, or a label before.
+  { cat: "name", group: true, name: true, re: new RegExp("([" + KJ + "]{2,5}|[ァ-ヴー]{2,8})(?:さん|様|さま|くん|ちゃん|先生)", "g") },
+  { cat: "name", group: true, name: true, re: new RegExp("(?:氏名|お?名前|担当者?|宛名|差出人|送信者|契約者|名義人?) ?[:;・] ?([" + KJ + "]{2,6})", "g") }
+];
+const NOT_NAME = /^(?:.*[者客皆]|(?:住所|電話|年齢|性別|連絡|生年|会社|所属|部署|役職|番号|担当|名前|氏名).*|各位|貴社|御社|弊社|当社|先方|本人|ご?家族|お子|奥|旦那|神|仏|王|スタッフ|ユーザー|メンバー|オーナー|ドライバー|サポート)$/;
+const isDigit = c => c >= "0" && c <= "9";
+
+function splitWords(str) { return (str || "").normalize("NFKC").split(/[\s,、，]+/).map(w => w.trim().toLowerCase()).filter(Boolean); }
+
+// s must already be NFKC. cats: {tel: true, ...}. words: lower-case strings to always hide.
+function findPII(s, cats, words) {
+  const found = [];
+  for (const r of RULES) {
+    if (!cats[r.cat]) continue;
+    r.re.lastIndex = 0;
+    let m;
+    while ((m = r.re.exec(s))) {
+      if (!m[0]) { r.re.lastIndex++; continue; }
+      let start = m.index, end = m.index + m[0].length;
+      if (r.digits) {
+        const n = m[0].replace(/\D/g, "").length;
+        if (n < r.digits[0] || n > r.digits[1] || isDigit(s[start - 1] || "") || isDigit(s[end] || "")) { r.re.lastIndex = m.index + 1; continue; }
+      }
+      if (r.group) {
+        if (r.name && NOT_NAME.test(m[1])) continue;
+        start = m.index + (r.name && m[0].startsWith(m[1]) ? 0 : m[0].lastIndexOf(m[1])); end = start + m[1].length;
+      }
+      found.push({ cat: r.cat, start, end, from: m.index, to: m.index + m[0].length });   // from/to: with the label or honorific
+    }
+  }
+  const low = s.toLowerCase();
+  for (const w of words || []) {
+    for (let i = low.indexOf(w); i >= 0; i = low.indexOf(w, i + w.length)) found.push({ cat: "word", start: i, end: i + w.length, from: i, to: i + w.length, pri: 1 });
+  }
+  // Overlapping hits: the user's own words win, then the longer one.
+  found.sort((a, b) => (b.pri || 0) - (a.pri || 0) || (b.end - b.start) - (a.end - a.start) || a.start - b.start);
+  const keep = [];
+  for (const f of found) if (!keep.some(k => f.start < k.end && k.start < f.end)) keep.push(f);
+  return keep.sort((a, b) => a.start - b.start);
+}
+
+// The same search over several lines, also catching what the screen wrapped onto the next line
+// (an address, "普/通 1234567"). wraps(i) says whether line i+1 continues line i.
+// Returns, per line, the ranges to hide; a hit that spans two lines comes back as two ranges sharing an id.
+const reJP1 = new RegExp("[" + JP + "]");
+function findWrapped(strs, cats, words, wraps) {
+  const per = strs.map(t => findPII(t, cats, words));
+  let id = 0; per.forEach(hs => hs.forEach(h => (h.id = ++id)));
+  for (let i = 0; i + 1 < strs.length; i++) {
+    const A = strs[i], B = strs[i + 1]; if (!A || !B || !wraps(i)) continue;
+    const glue = reJP1.test(A[A.length - 1]) || reJP1.test(B[0]) ? "" : " ", cut = A.length + glue.length;
+    for (const h of findPII(A + glue + B, cats, words)) {
+      if (h.from >= A.length || h.to <= cut) continue;        // sits inside one line: already found there
+      const a = { cat: h.cat, start: h.start, end: Math.min(h.end, A.length), id: ++id };
+      const b = { cat: h.cat, start: Math.max(h.start - cut, 0), end: h.end - cut, id };
+      if (a.end > a.start) per[i] = per[i].filter(x => x.end <= a.start || x.start >= a.end).concat(a);
+      if (b.end > b.start) per[i + 1] = per[i + 1].filter(x => x.end <= b.start || x.start >= b.end).concat(b);
+    }
+  }
+  return per;
+}
+
+// Replace personal info in plain text with ●, keeping the length. Returns {text, count}.
+function maskText(text, cats, words) {
+  const lines = text.split("\n"), norms = [], maps = [];
+  lines.forEach(line => {
+    let norm = ""; const map = [];
+    for (let i = 0; i < line.length; i++) { for (const ch of line[i].normalize("NFKC")) { norm += ch; map.push(i); } }
+    norms.push(norm); maps.push(map);
+  });
+  const ids = new Set();
+  const out = findWrapped(norms, cats, words, () => true).map((hits, n) => {
+    if (!hits.length) return lines[n];
+    const a = lines[n].split("");
+    for (const h of hits) { ids.add(h.id); for (let i = maps[n][h.start]; i <= maps[n][h.end - 1]; i++) a[i] = "●"; }
+    return a.join("");
+  });
+  return { text: out.join("\n"), count: ids.size };
+}
+
+// Turn the engine's result into lines of characters that each remember where they sit in the image.
+function ocrChars(data) {
+  const src = data.blocks ? data.blocks.flatMap(b => (b.paragraphs || []).flatMap(p => p.lines || [])) : (data.lines || []);
+  const jp = new RegExp("[" + JP + "]"), lines = [];
+  for (const ln of src) {
+    const chars = [];
+    for (const w of ln.words || []) {
+      const syms = w.symbols && w.symbols.length ? w.symbols : [{ text: w.text, bbox: w.bbox }];
+      const first = ((syms[0].text || "").normalize("NFKC").trim())[0];
+      // Same rule as cleanLine: the engine's spaces around Japanese characters are not real.
+      if (chars.length && first && !jp.test(chars[chars.length - 1].ch) && !jp.test(first)) chars.push({ ch: " ", b: null });
+      for (const sy of syms) for (const ch of (sy.text || "").normalize("NFKC")) if (ch.trim()) chars.push({ ch, b: sy.bbox });
+    }
+    if (chars.length) { chars.box = ln.bbox || null; chars.conf = ln.confidence == null ? 100 : ln.confidence; lines.push(chars); }
+  }
+  return lines;
+}
+
+function boxesFor(lines, cats, words, W, H) {
+  const out = [];
+  // A wrapped line sits right under the one before it; a new chat bubble or section leaves a clear gap.
+  const wraps = i => { const a = lines[i].box, b = lines[i + 1].box; return !!a && !!b && b.y0 > a.y0 && b.y0 - a.y1 < (a.y1 - a.y0) * 1.3; };
+  const per = findWrapped(lines.map(chars => chars.map(c => c.ch).join("")), cats, words, wraps);
+  lines.forEach((chars, li) => {
+    for (const hit of per[li]) {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let i = hit.start; i < hit.end; i++) {
+        const b = chars[i].b; if (!b) continue;
+        x0 = Math.min(x0, b.x0); y0 = Math.min(y0, b.y0); x1 = Math.max(x1, b.x1); y1 = Math.max(y1, b.y1);
+      }
+      if (x1 <= x0 || y1 <= y0) continue;
+      // One stray tall letter box should not black out the neighbouring lines.
+      if (chars.box) { y0 = Math.max(y0, chars.box.y0); y1 = Math.min(y1, chars.box.y1); if (y1 <= y0) continue; }
+      // Letter boxes hug the ink and are often a little off sideways; cover generously.
+      const py = Math.ceil((y1 - y0) * 0.15) + 1, px = Math.ceil((y1 - y0) * 0.35) + 1;
+      x0 = Math.max(0, x0 - px); y0 = Math.max(0, y0 - py); x1 = Math.min(W, x1 + px); y1 = Math.min(H, y1 + py);
+      out.push({ cat: hit.cat, x: x0, y: y0, w: x1 - x0, h: y1 - y0, key: li + ":" + x0 + ":" + y0 + ":" + x1 });
+    }
+  });
+  return out;
+}
+
+/* Places where there is writing the engine could not read. Nearly always that is a line sliced in half
+   by the edge of the screen or by a fixed header: still legible to a person, invisible to the search above.
+   lines: result of ocrChars. img: ImageData of the screenshot. Returns boxes marked warn. */
+const CONF = 45;   // garbage from sliced letters scores far below this; real text far above
+function unreadBoxes(lines, img, W, H) {
+  const hs = lines.filter(l => l.box && l.conf >= CONF).map(l => l.box.y1 - l.box.y0).sort((a, b) => a - b);
+  const med = hs.length ? hs[hs.length >> 1] : Math.round(W * 0.03), pad = Math.ceil(med * 0.2), out = [];
+  const push = (x0, y0, x1, y1) => {
+    x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(W, x1 + pad); y1 = Math.min(H, y1 + pad);
+    out.push({ cat: "edge", warn: true, x: x0, y: y0, w: x1 - x0, h: y1 - y0, key: "e:" + x0 + ":" + y0 + ":" + x1 });
+  };
+  // 1. The engine saw something there but could make no sense of it.
+  for (const l of lines) {
+    const b = l.box; if (!b || l.conf >= CONF || b.x1 - b.x0 < med * 2) continue;   // a misread scrap of two letters is not worth a warning
+    push(b.x0, b.y0, b.x1, b.y1);
+  }
+  // 2. The pixels show a strip of ink, lower than a full line, that starts or stops abruptly: letters cut
+  //    straight through. Whole letters begin and end with a few thin tips (first row well under half the
+  //    average row); sliced ones start at full strength. Where the engine did read such a strip its reading
+  //    may be wrong in places, so that is flagged too, on stricter terms. Slivers under a third of a line
+  //    are left alone: nobody can read those.
+  const d = img.data, ink = new Uint32Array(H), bgs = new Uint8Array(H), hist = new Uint32Array(16);
+  const lum = p => (d[p] * 77 + d[p + 1] * 150 + d[p + 2] * 29) >> 8;
+  for (let y = 0; y < H; y++) {
+    hist.fill(0); const row = y * W * 4;
+    for (let x = 0; x < W; x++) hist[lum(row + x * 4) >> 4]++;
+    let m = 0; for (let k = 1; k < 16; k++) if (hist[k] > hist[m]) m = k;
+    const bg = bgs[y] = m * 16 + 8; let n = 0;
+    for (let x = 0; x < W; x++) if (Math.abs(lum(row + x * 4) - bg) > 60) n++;
+    ink[y] = n;
+  }
+  const min = Math.max(3, W * 0.004);
+  for (let y = 0; y < H;) {
+    if (ink[y] < min) { y++; continue; }
+    let y1 = y, sum = 0; while (y1 < H && ink[y1] >= min) sum += ink[y1++];
+    const h = y1 - y, y0 = y, mean = sum / h; y = y1;
+    const over = b => Math.min(b.y1, y1) - Math.max(b.y0, y0) > h * 0.3;
+    const read = lines.some(l => l.box && over(l.box)), sharp = Math.max(ink[y0], ink[y1 - 1]) / mean;
+    if (h < med * 0.3 || h > med * (read ? 0.8 : 0.9) || sharp < (read ? 1 : 0.85)) continue;
+    if (out.some(o => over({ y0: o.y, y1: o.y + o.h }))) continue;
+    let x0 = W, x1 = 0;
+    for (let yy = y0; yy < y1; yy++) for (let x = 0; x < W; x++) if (Math.abs(lum((yy * W + x) * 4) - bgs[yy]) > 60) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
+    if (x1 - x0 >= med * 2) push(x0, y0, x1 + 1, y1);
+  }
+  return out;
+}
+
+/* A PDF whose pages are the redacted pictures and nothing else: no text layer, nothing underneath. */
+function buildPdf(pages) {
+  const enc = new TextEncoder(), parts = [], offs = []; let len = 0;
+  const put = x => { const u = typeof x === "string" ? enc.encode(x) : x; parts.push(u); len += u.length; };
+  const obj = (n, body) => { offs[n] = len; put(n + " 0 obj\n"); body(); put("\nendobj\n"); };
+  put("%PDF-1.4\n%âãÏÓ\n");
+  obj(1, () => put("<< /Type /Catalog /Pages 2 0 R >>"));
+  obj(2, () => put("<< /Type /Pages /Count " + pages.length + " /Kids [" + pages.map((_, i) => (3 + i * 3) + " 0 R").join(" ") + "] >>"));
+  pages.forEach((p, i) => {
+    const a = 3 + i * 3, W = 420, H = +(W * p.h / p.w).toFixed(2), draw = "q " + W + " 0 0 " + H + " 0 0 cm /Im0 Do Q";
+    obj(a, () => put("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + W + " " + H + "] /Resources << /XObject << /Im0 " + (a + 2) + " 0 R >> >> /Contents " + (a + 1) + " 0 R >>"));
+    obj(a + 1, () => put("<< /Length " + draw.length + " >>\nstream\n" + draw + "\nendstream"));
+    obj(a + 2, () => {
+      put("<< /Type /XObject /Subtype /Image /Width " + p.w + " /Height " + p.h + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " + p.jpeg.length + " >>\nstream\n");
+      put(p.jpeg); put("\nendstream");
+    });
+  });
+  const total = 3 + pages.length * 3, xref = len;
+  put("xref\n0 " + total + "\n0000000000 65535 f \n");
+  for (let n = 1; n < total; n++) put(String(offs[n]).padStart(10, "0") + " 00000 n \n");
+  put("trailer\n<< /Size " + total + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF\n");
+  return new Blob(parts, { type: "application/pdf" });
+}
+
 /* ---------- state ---------- */
 const $ = id => document.getElementById(id);
 const el = { file: $("file"), drop: $("drop"), strip: $("strip"), shotsSec: $("shotsSec"), shotCount: $("shotCount"),
   status: $("status"), text: $("text"), report: $("report"), charCount: $("charCount"), stale: $("stale"),
   dedupe: $("dedupe"), copy: $("copy"), join: $("join"), undo: $("undo"), hist: $("hist"),
-  histEmpty: $("histEmpty"), histCount: $("histCount"), histClear: $("histClear") };
+  histEmpty: $("histEmpty"), histCount: $("histCount"), histClear: $("histClear"),
+  redactSec: $("redactSec"), redactCount: $("redactCount"), cats: $("cats"), words: $("words"), pdf: $("pdf"), imgs: $("imgs"),
+  ed: $("ed"), edTitle: $("edTitle"), edPrev: $("edPrev"), edNext: $("edNext"), edAdd: $("edAdd"), edHint: $("edHint"),
+  stage: $("stage"), edImg: $("edImg") };
 
-let shots = [];      // {id, name, url, blob, status, lines, progress}
+// {id, name, url, blob, status, lines, progress,
+//  w, h (pixels), chars (letters with positions), auto (detected boxes), off (keys the user un-hid), manual (boxes drawn by hand),
+//  edges (unread places), on (keys of unread places the user chose to hide)}
+let shots = [];
 let seq = 0, busy = false, edited = false, undoText = null, worker = null, workerLoading = null, current = null;
 
 function setStatus(msg, err) { el.status.textContent = msg || ""; el.status.classList.toggle("err", !!err); }
@@ -365,7 +653,8 @@ function addFiles(files) {
   if (!imgs.length) { setStatus("画像ファイルが見つかりませんでした。", true); return; }
   // Screenshots are named and dated in the order taken, so oldest first is reading order.
   imgs.sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0) || a.name.localeCompare(b.name, "ja", { numeric: true }));
-  for (const f of imgs) shots.push({ id: ++seq, name: f.name, blob: f, url: URL.createObjectURL(f), status: "wait", lines: null, progress: 0 });
+  for (const f of imgs) shots.push({ id: ++seq, name: f.name, blob: f, url: URL.createObjectURL(f), status: "wait", lines: null, progress: 0,
+    w: 0, h: 0, chars: null, auto: [], off: new Set(), manual: [], edges: [], on: new Set() });
   renderStrip(); pump();
 }
 el.file.addEventListener("change", () => { addFiles(el.file.files); el.file.value = ""; });
@@ -378,36 +667,57 @@ document.addEventListener("paste", e => {
 });
 
 /* ---------- strip ---------- */
-const stateLabel = s => ({ wait: "待機中", run: "読み取り中", done: s.lines && s.lines.length ? s.lines.length + "行" : "文字なし", err: "失敗" })[s.status];
+// Detected personal info is hidden unless the user un-hides it. Unread places are the other way round:
+// only shown as a warning until the user hides them, unless strict mode hides them from the start.
+const isHidden = (s, a) => a.warn && !cfg.strict ? s.on.has(a.key) : !s.off.has(a.key);
+const hidden = s => s.auto.filter(a => isHidden(s, a)).concat(s.manual);   // what will actually be blacked out
+const pending = s => s.auto.filter(a => a.warn && !isHidden(s, a));        // warnings nobody has dealt with
+function toggle(s, a) {
+  const h = isHidden(s, a);
+  if (a.warn && !cfg.strict) h ? s.on.delete(a.key) : s.on.add(a.key); else h ? s.off.add(a.key) : s.off.delete(a.key);
+}
+const stateLabel = s => ({ wait: "待機中", run: "読み取り中", done: s.lines && s.lines.length ? s.lines.length + "行" : "文字なし", err: "失敗" })[s.status]
+  + (hidden(s).length ? " ■" + hidden(s).length : "") + (pending(s).length ? " ⚠" + pending(s).length : "");
 function renderStrip() {
   el.shotsSec.hidden = shots.length === 0;
   el.shotCount.textContent = shots.length + "枚";
   el.strip.textContent = "";
   shots.forEach((s, i) => {
     const d = document.createElement("div"); d.className = "shot"; d.dataset.id = s.id;
-    d.innerHTML = '<div class="pic"><img alt=""><span class="no"></span><span class="bar"></span></div>' +
+    d.innerHTML = '<button type="button" class="pic" data-act="edit"><span class="fit"><img alt=""><span class="marks"></span></span><span class="no"></span><span class="bar"></span></button>' +
       '<div class="state"></div><div class="ctl">' +
       '<button type="button" data-act="left" aria-label="前へ移動">←</button>' +
       '<button type="button" data-act="right" aria-label="後ろへ移動">→</button>' +
       '<button type="button" data-act="del" aria-label="削除">×</button></div>';
     d.querySelector("img").src = s.url;
     d.querySelector("img").alt = (i + 1) + "枚目のスクショ";
+    d.querySelector(".pic").setAttribute("aria-label", (i + 1) + "枚目の黒塗りを確認・編集");
     d.querySelector(".no").textContent = i + 1;
     d.querySelector('[data-act="left"]').disabled = i === 0;
     d.querySelector('[data-act="right"]').disabled = i === shots.length - 1;
     el.strip.appendChild(d);
     paintShot(s);
   });
+  renderRedact();
 }
 function paintShot(s) {
   const d = el.strip.querySelector('[data-id="' + s.id + '"]'); if (!d) return;
   const st = d.querySelector(".state");
   st.textContent = stateLabel(s); st.classList.toggle("err", s.status === "err");
   d.querySelector(".bar").style.width = (s.status === "run" ? Math.round(s.progress * 100) : 0) + "%";
+  const marks = d.querySelector(".marks"); marks.textContent = "";
+  if (s.w) for (const b of hidden(s)) marks.appendChild(place(document.createElement("i"), b, s));
+  if (s.w) for (const b of pending(s)) marks.appendChild(place(document.createElement("i"), b, s)).className = "w";
+}
+function place(node, b, s) {
+  node.style.left = b.x / s.w * 100 + "%"; node.style.top = b.y / s.h * 100 + "%";
+  node.style.width = b.w / s.w * 100 + "%"; node.style.height = b.h / s.h * 100 + "%";
+  return node;
 }
 el.strip.addEventListener("click", e => {
   const b = e.target.closest("button[data-act]"); if (!b) return;
   const id = +b.closest(".shot").dataset.id, i = shots.findIndex(s => s.id === id);
+  if (b.dataset.act === "edit") { openEditor(id); return; }
   if (b.dataset.act === "del") { URL.revokeObjectURL(shots[i].url); shots.splice(i, 1); }
   else { const k = b.dataset.act === "left" ? i - 1 : i + 1; [shots[i], shots[k]] = [shots[k], shots[i]]; }
   renderStrip(); afterChange();
@@ -453,6 +763,156 @@ async function prepare(blob) {
   return c;
 }
 
+/* ---------- redaction ---------- */
+const RKEY = "pashacopy.redact";
+let cfg = { cats: Object.fromEntries(CATS.map(c => [c[0], true])), words: "", strict: false };
+try { const saved = JSON.parse(localStorage.getItem(RKEY) || "null"); if (saved) { Object.assign(cfg.cats, saved.cats); cfg.words = saved.words || ""; cfg.strict = !!saved.strict; } } catch (e) {}
+function saveCfg() { try { localStorage.setItem(RKEY, JSON.stringify(cfg)); } catch (e) {} }
+
+function detect(s) { s.auto = (s.chars && s.w ? boxesFor(s.chars, cfg.cats, splitWords(cfg.words), s.w, s.h) : []).concat(s.edges); }
+function redetectAll() { shots.forEach(s => { detect(s); paintShot(s); }); renderRedact(); if (el.ed.open) paintEditor(); }
+
+CATS.forEach(([id, label]) => {
+  const l = document.createElement("label"); l.className = "check";
+  l.innerHTML = '<input type="checkbox"> <span></span> <b></b>';
+  l.querySelector("span").textContent = label;
+  const box = l.querySelector("input"); box.checked = !!cfg.cats[id]; box.dataset.cat = id;
+  box.addEventListener("change", () => { cfg.cats[id] = box.checked; saveCfg(); redetectAll(); });
+  el.cats.appendChild(l);
+});
+$("strict").checked = cfg.strict;
+$("strict").addEventListener("change", e => { cfg.strict = e.target.checked; saveCfg(); redetectAll(); });
+$("warnAll").addEventListener("click", () => { shots.forEach(s => pending(s).forEach(a => toggle(s, a))); redetectAll(); });
+el.words.value = cfg.words;
+el.words.addEventListener("input", () => { cfg.words = el.words.value; saveCfg(); redetectAll(); });
+
+function renderRedact() {
+  el.redactSec.hidden = shots.length === 0;
+  const n = {}; let total = 0;
+  shots.forEach(s => hidden(s).forEach(b => { n[b.cat] = (n[b.cat] || 0) + 1; total++; }));
+  el.cats.querySelectorAll("input").forEach(i => { i.parentNode.querySelector("b").textContent = n[i.dataset.cat] || ""; });
+  el.redactCount.textContent = total ? "黒塗り" + total + "か所" : "";
+  const warn = shots.reduce((k, s) => k + pending(s).length, 0);
+  $("warnBox").hidden = warn === 0;
+  $("warnMsg").textContent = "⚠ 読み取れなかった行が" + warn + "か所あります（黄色の部分）。端で切れた文字が残っていないか確認してください。";
+}
+
+async function redacted(s) {
+  const bmp = await createImageBitmap(s.blob);
+  const c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(bmp, 0, 0);
+  // Painted straight into the pixels: there is no layer to lift off afterwards.
+  ctx.fillStyle = "#000"; for (const b of hidden(s)) ctx.fillRect(Math.floor(b.x), Math.floor(b.y), Math.ceil(b.w), Math.ceil(b.h));
+  return c;
+}
+const toBlob = (c, type, q) => new Promise((ok, no) => c.toBlob(b => b ? ok(b) : no(new Error("toBlob")), type, q));
+function stamp() {   // plain letters only: some browsers drop a Japanese file name
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  return "pashacopy_" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "_" + p(d.getHours()) + p(d.getMinutes());
+}
+async function deliver(files) {
+  // On a phone the share sheet is where "save to Files / send to someone" lives; elsewhere, download.
+  if (matchMedia("(pointer: coarse)").matches && navigator.canShare && navigator.canShare({ files })) {
+    try { await navigator.share({ files }); return true; }
+    catch (e) { if (e.name === "AbortError") return false; }
+  }
+  for (const f of files) {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    if (files.length > 1) await new Promise(r => setTimeout(r, 300));
+  }
+  return true;
+}
+async function exportShots(kind) {
+  if (!shots.length) return;
+  if (shots.some(s => s.status === "wait" || s.status === "run")) { setStatus("読み取りが終わってから保存してください。", true); return; }
+  el.pdf.disabled = el.imgs.disabled = true;
+  try {
+    const total = shots.reduce((n, s) => n + hidden(s).length, 0), warn = shots.reduce((n, s) => n + pending(s).length, 0);
+    const stem = stamp(), files = [], pages = [];
+    for (let i = 0; i < shots.length; i++) {
+      setStatus((i + 1) + "枚目を書き出し中（全" + shots.length + "枚）");
+      const c = await redacted(shots[i]);
+      if (kind === "pdf") pages.push({ w: c.width, h: c.height, jpeg: new Uint8Array(await (await toBlob(c, "image/jpeg", 0.9)).arrayBuffer()) });
+      else files.push(new File([await toBlob(c, "image/png")], stem + "_" + String(i + 1).padStart(2, "0") + ".png", { type: "image/png" }));
+    }
+    if (kind === "pdf") files.push(new File([buildPdf(pages)], stem + ".pdf", { type: "application/pdf" }));
+    const ok = await deliver(files);
+    setStatus(!ok ? "保存をやめました。" : (kind === "pdf" ? "PDF" : "画像") + "を書き出しました（" + shots.length + "枚・黒塗り" + total + "か所）。"
+      + (total ? "" : "黒塗りは1か所もありません。") + (warn ? "読み取れなかった行が" + warn + "か所、隠されずに残っています。" : ""));
+  } catch (e) { console.error(e); setStatus("書き出しに失敗しました。枚数を減らして試してください。", true); }
+  finally { el.pdf.disabled = el.imgs.disabled = false; }
+}
+el.pdf.addEventListener("click", () => exportShots("pdf"));
+el.imgs.addEventListener("click", () => exportShots("png"));
+
+/* ---------- redaction editor: one screenshot, large ---------- */
+let edId = 0, adding = false, draft = null;
+const edShot = () => shots.find(s => s.id === edId);
+function openEditor(id) { edId = id; paintEditor(); if (!el.ed.open) el.ed.showModal(); }
+function paintEditor() {
+  const s = edShot(); if (!s) { if (el.ed.open) el.ed.close(); return; }
+  const i = shots.indexOf(s);
+  el.edTitle.textContent = (i + 1) + "枚目 / 全" + shots.length + "枚";
+  if (el.edImg.getAttribute("src") !== s.url) el.edImg.src = s.url;
+  el.edPrev.disabled = i === 0; el.edNext.disabled = i === shots.length - 1;
+  el.stage.querySelectorAll(".box").forEach(b => b.remove());
+  const add = (b, off, label, act) => {
+    const n = place(document.createElement("button"), b, s); n.type = "button"; n.className = "box" + (off ? " off" : "");
+    n.setAttribute("aria-label", label); n.addEventListener("click", act); el.stage.appendChild(n);
+  };
+  if (s.w) {
+    s.auto.forEach(a => { const off = !isHidden(s, a);
+      add(a, off, CAT_LABEL[a.cat] + (off ? "（隠していません。押すと隠す）" : "（黒塗り中。押すと解除）"), () => { toggle(s, a); changed(s); });
+      if (off && a.warn) el.stage.lastChild.className = "box warn"; });
+    s.manual.forEach((m, k) => add(m, false, "手で足した範囲（押すと消す）", () => { s.manual.splice(k, 1); changed(s); }));
+  }
+  const on = hidden(s).length, warn = pending(s).length, off = s.auto.length - (on - s.manual.length) - warn;
+  el.edHint.textContent = s.status === "wait" || s.status === "run" ? "読み取り中です。終わると自動で黒塗りが入ります。"
+    : "黒塗り" + on + "か所" + (off ? "・解除中" + off + "か所" : "") + "。黒い部分を押すと解除、点線を押すと戻せます。"
+      + (warn ? "黄色の" + warn + "か所は読み取れなかった行です。押すと隠せます。" : "")
+      + (adding ? "なぞった範囲が黒塗りになります。" : "");
+  el.edAdd.setAttribute("aria-pressed", String(adding)); el.stage.classList.toggle("adding", adding);
+}
+function changed(s) { paintShot(s); renderRedact(); paintEditor(); }
+function step(k) { const i = shots.indexOf(edShot()) + k; if (shots[i]) { edId = shots[i].id; paintEditor(); el.ed.querySelector(".edscroll").scrollTop = 0; } }
+el.edPrev.addEventListener("click", () => step(-1));
+el.edNext.addEventListener("click", () => step(1));
+$("edClose").addEventListener("click", () => el.ed.close());
+el.edAdd.addEventListener("click", () => { adding = !adding; paintEditor(); });
+el.edImg.addEventListener("load", () => {
+  const s = edShot(); if (s && !s.w) { s.w = el.edImg.naturalWidth; s.h = el.edImg.naturalHeight; paintEditor(); }
+});
+// Draw a box by dragging. With a mouse that always works; with a finger only in "範囲を足す" mode,
+// because otherwise a drag has to scroll the picture.
+el.stage.addEventListener("pointerdown", e => {
+  const s = edShot();
+  if (!s || !s.w || e.target.closest(".box") || !(adding || e.pointerType === "mouse") || e.button > 0) return;
+  const r = el.edImg.getBoundingClientRect(), node = document.createElement("div");
+  node.className = "box draft"; el.stage.appendChild(node);
+  draft = { id: e.pointerId, r, x: e.clientX - r.left, y: e.clientY - r.top, node, box: null };
+  // A finger already stays with the element it went down on; only the mouse needs capturing.
+  if (e.pointerType === "mouse") { el.stage.setPointerCapture(e.pointerId); e.preventDefault(); }
+});
+el.stage.addEventListener("pointermove", e => {
+  if (!draft || e.pointerId !== draft.id) return;
+  const s = edShot(), r = draft.r, k = s.w / r.width;
+  const cx = Math.min(Math.max(e.clientX - r.left, 0), r.width), cy = Math.min(Math.max(e.clientY - r.top, 0), r.height);
+  const x0 = Math.min(Math.max(draft.x, 0), r.width), y0 = Math.min(Math.max(draft.y, 0), r.height);
+  draft.box = { cat: "manual", x: Math.min(x0, cx) * k, y: Math.min(y0, cy) * k, w: Math.abs(cx - x0) * k, h: Math.abs(cy - y0) * k };
+  draft.px = Math.min(Math.abs(cx - x0), Math.abs(cy - y0));
+  place(draft.node, draft.box, s);
+});
+function endDraft(e, keep) {
+  if (!draft || e.pointerId !== draft.id) return;
+  const d = draft, s = edShot(); draft = null; d.node.remove();
+  if (keep && s && d.box && d.px >= 6) { s.manual.push(d.box); changed(s); }
+}
+el.stage.addEventListener("pointerup", e => endDraft(e, true));
+el.stage.addEventListener("pointercancel", e => endDraft(e, false));
+
 async function pump() {
   if (busy) return; busy = true;
   try {
@@ -465,10 +925,13 @@ async function pump() {
       setStatus(idx + "枚目を読み取り中（全" + shots.length + "枚）");
       try {
         const canvas = await prepare(s.blob);
-        const res = await w.recognize(canvas);
-        s.lines = cleanText(res.data.text); s.status = "done";
+        const res = await w.recognize(canvas, {}, { text: true, blocks: true });
+        s.w = canvas.width; s.h = canvas.height;
+        s.lines = cleanText(res.data.text); s.chars = ocrChars(res.data); s.status = "done";
+        s.edges = unreadBoxes(s.chars, canvas.getContext("2d").getImageData(0, 0, s.w, s.h), s.w, s.h);
+        detect(s);
       } catch (e) { s.status = "err"; s.lines = []; console.error(e); }
-      current = null; paintShot(s);
+      current = null; paintShot(s); renderRedact(); if (el.ed.open && edId === s.id) paintEditor();
     }
     setStatus(shots.length ? "読み取りが終わりました。" : "");
     afterChange();
@@ -511,6 +974,13 @@ el.text.addEventListener("input", () => { edited = true; fit(); });
 el.join.addEventListener("click", () => {
   if (!el.text.value.trim()) return;
   undoText = el.text.value; el.text.value = joinLines(el.text.value); edited = true; el.undo.hidden = false; fit();
+});
+$("mask").addEventListener("click", () => {
+  if (!el.text.value.trim()) return;
+  const r = maskText(el.text.value, cfg.cats, splitWords(cfg.words));
+  if (!r.count) { setStatus("文章の中に、隠す対象は見つかりませんでした。"); return; }
+  undoText = el.text.value; el.text.value = r.text; edited = true; el.undo.hidden = false; fit();
+  setStatus(r.count + "か所を伏せ字にしました。");
 });
 el.undo.addEventListener("click", () => { if (undoText != null) { el.text.value = undoText; undoText = null; el.undo.hidden = true; fit(); } });
 el.copy.addEventListener("click", async () => {
