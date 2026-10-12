@@ -767,9 +767,35 @@ async function prepare(blob) {
   for (let p = 0; p < d.length; p += 4 * 97) { sum += d[p] * 0.299 + d[p + 1] * 0.587 + d[p + 2] * 0.114; n++; }
   if (sum / n < 110) {
     for (let p = 0; p < d.length; p += 4) { d[p] = 255 - d[p]; d[p + 1] = 255 - d[p + 1]; d[p + 2] = 255 - d[p + 2]; }
-    ctx.putImageData(img, 0, 0);
   }
+  dropUnderlines(d, c.width, c.height);
+  ctx.putImageData(img, 0, 0);
   return c;
+}
+
+/* Links are underlined, and the line runs into the letters above it, so "@" reads as "m" and a
+   card number turns to noise. Any thin horizontal stroke longer than a few letters is not a letter:
+   paint it out (only for reading; the saved picture is untouched). Where a letter crosses the line
+   (g, p, y) the column is taller than the line and stays. Expects dark ink on a light background. */
+function dropUnderlines(d, W, H) {
+  const g = new Uint8Array(W * H);
+  for (let i = 0, p = 0; i < g.length; i++, p += 4) g[i] = (d[p] * 77 + d[p + 1] * 150 + d[p + 2] * 29) >> 8;
+  const ink = i => g[i] < 150, L = Math.max(40, Math.round(W * 0.08)), T = Math.max(3, Math.round(W / 200));
+  const wipe = [];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W;) {
+      if (!ink(y * W + x)) { x++; continue; }
+      let x1 = x; while (x1 < W && ink(y * W + x1)) x1++;
+      if (x1 - x >= L) for (let xx = x; xx < x1; xx++) {
+        let up = 0, dn = 0;
+        while (up <= T && y - up - 1 >= 0 && ink((y - up - 1) * W + xx)) up++;
+        while (dn <= T && y + dn + 1 < H && ink((y + dn + 1) * W + xx)) dn++;
+        if (up + dn + 1 <= T) wipe.push(y * W + xx);
+      }
+      x = x1;
+    }
+  }
+  for (const i of wipe) { const p = i * 4; d[p] = d[p + 1] = d[p + 2] = 255; }
 }
 
 /* ---------- redaction ---------- */
