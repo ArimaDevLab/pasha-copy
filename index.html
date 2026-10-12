@@ -312,6 +312,25 @@ function cleanText(raw) {
 }
 const key = s => s.normalize("NFKC").replace(/\s+/g, "");
 
+// The engine's own paragraph breaks are unreliable: it splits off a short last line ("す。") and runs
+// paragraphs together when they are not much further apart. Lay the lines out again from where they
+// sit: a step down clearly larger than the usual line spacing is a new paragraph.
+function textByLayout(data) {
+  const src = data.blocks ? data.blocks.flatMap(b => (b.paragraphs || []).flatMap(p => p.lines || [])) : [];
+  if (!src.length) return data.text || "";
+  const hs = src.map(l => l.bbox.y1 - l.bbox.y0).sort((a, b) => a - b), lh = hs[hs.length >> 1], steps = [];
+  for (let i = 1; i < src.length; i++) { const d = src[i].bbox.y0 - src[i - 1].bbox.y0; if (d >= lh * 0.8) steps.push(d); }
+  steps.sort((a, b) => a - b);
+  // The usual spacing is the tight one inside a paragraph, so look near the low end, not the middle:
+  // in a chat most lines are one-line messages, spaced like paragraphs.
+  const usual = steps.length ? steps[Math.floor(steps.length * 0.1)] : 0, out = [];
+  src.forEach((l, i) => {
+    if (i && usual) { const d = l.bbox.y0 - src[i - 1].bbox.y0; if (d > usual * 1.15 || d < 0) out.push(""); }
+    out.push((l.text || "").replace(/\n+$/, ""));
+  });
+  return out.join("\n");
+}
+
 function lev(a, b) {
   const m = a.length, n = b.length;
   if (!m) return n; if (!n) return m;
@@ -384,9 +403,11 @@ function mergeAll(pages, dedupe) {
       if (q.overlap) { p = q; first = lines; second = acc; swapped = true; }
     }
     const head = first.slice(0, p.endA), tail = second.slice(p.startB);
+    // A paragraph break right at the seam belongs to the text, not to the screenshots: keep one.
+    const gap = head[head.length - 1] === "" || tail[0] === "";
     while (head.length && head[head.length - 1] === "") head.pop();
     while (tail.length && tail[0] === "") tail.shift();
-    if (!p.overlap && head.length && tail.length) head.push("");
+    if ((!p.overlap || gap) && head.length && tail.length) head.push("");
     acc = head.concat(tail);
     report.push({ page: n + 1, removed: p.removed, overlap: p.overlap, swapped });
   });
@@ -962,7 +983,7 @@ async function pump() {
         const canvas = await prepare(s.blob);
         const res = await w.recognize(canvas, {}, { text: true, blocks: true });
         s.w = canvas.width; s.h = canvas.height;
-        s.lines = cleanText(res.data.text); s.chars = ocrChars(res.data); s.status = "done";
+        s.lines = cleanText(textByLayout(res.data)); s.chars = ocrChars(res.data); s.status = "done";
         s.edges = unreadBoxes(s.chars, canvas.getContext("2d").getImageData(0, 0, s.w, s.h), s.w, s.h);
         detect(s);
       } catch (e) { s.status = "err"; s.lines = []; s.why = reason(e); console.error(e); }
