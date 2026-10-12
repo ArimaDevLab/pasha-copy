@@ -453,7 +453,8 @@ const RULES = [
   { cat: "addr", re: new RegExp(PREF + "(?:[" + KJ + "]{1,6}[市区町村郡]){1,2}", "g") },
   // Names are only recognisable from what surrounds them: an honorific after, or a label before.
   { cat: "name", group: true, name: true, re: new RegExp("([" + KJ + "]{2,5}|[ァ-ヴー]{2,8})(?:さん|様|さま|くん|ちゃん|先生)", "g") },
-  { cat: "name", group: true, name: true, re: new RegExp("(?:氏名|お?名前|担当者?|宛名|差出人|送信者|契約者|名義人?|代表者?|責任者|幹事|[" + KJ + "]{0,3}長) ?[:;・] ?([" + KJ + "]{2,6})", "g") }
+  // A name after a label sits on the label's line; letting it run on into the next line ate "連絡" of "連絡先".
+  { cat: "name", group: true, name: true, one: true, re: new RegExp("(?:氏名|お?名前|担当者?|宛名|差出人|送信者|契約者|名義人?|代表者?|責任者|幹事|[" + KJ + "]{0,3}長) ?[:;・] ?([" + KJ + "]{2,6})", "g") }
 ];
 const NOT_NAME = /^(?:.*[者客皆]|(?:住所|電話|年齢|性別|連絡|生年|会社|所属|部署|役職|番号|担当|名前|氏名).*|各位|貴社|御社|弊社|当社|先方|本人|ご?家族|お子|奥|旦那|神|仏|王|スタッフ|ユーザー|メンバー|オーナー|ドライバー|サポート)$/;
 const isDigit = c => c >= "0" && c <= "9";
@@ -478,7 +479,7 @@ function findPII(s, cats, words) {
         if (r.name && NOT_NAME.test(m[1])) continue;
         start = m.index + (r.name && m[0].startsWith(m[1]) ? 0 : m[0].lastIndexOf(m[1])); end = start + m[1].length;
       }
-      found.push({ cat: r.cat, start, end, from: m.index, to: m.index + m[0].length });   // from/to: with the label or honorific
+      found.push({ cat: r.cat, start, end, from: m.index, to: m.index + m[0].length, one: !!r.one });   // from/to: with the label or honorific
     }
   }
   const low = s.toLowerCase();
@@ -503,7 +504,7 @@ function findWrapped(strs, cats, words, wraps) {
     const A = strs[i], B = strs[i + 1]; if (!A || !B || !wraps(i)) continue;
     const glue = reJP1.test(A[A.length - 1]) || reJP1.test(B[0]) ? "" : " ", cut = A.length + glue.length;
     for (const h of findPII(A + glue + B, cats, words)) {
-      if (h.from >= A.length || h.to <= cut) continue;        // sits inside one line: already found there
+      if (h.from >= A.length || h.to <= cut || h.one) continue;   // inside one line (found there already), or must not span lines
       const a = { cat: h.cat, start: h.start, end: Math.min(h.end, A.length), id: ++id };
       const b = { cat: h.cat, start: Math.max(h.start - cut, 0), end: h.end - cut, id };
       if (a.end > a.start) per[i] = per[i].filter(x => x.end <= a.start || x.start >= a.end).concat(a);
