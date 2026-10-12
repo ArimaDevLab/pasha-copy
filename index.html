@@ -453,7 +453,7 @@ const RULES = [
   { cat: "addr", re: new RegExp(PREF + "(?:[" + KJ + "]{1,6}[市区町村郡]){1,2}", "g") },
   // Names are only recognisable from what surrounds them: an honorific after, or a label before.
   { cat: "name", group: true, name: true, re: new RegExp("([" + KJ + "]{2,5}|[ァ-ヴー]{2,8})(?:さん|様|さま|くん|ちゃん|先生)", "g") },
-  { cat: "name", group: true, name: true, re: new RegExp("(?:氏名|お?名前|担当者?|宛名|差出人|送信者|契約者|名義人?) ?[:;・] ?([" + KJ + "]{2,6})", "g") }
+  { cat: "name", group: true, name: true, re: new RegExp("(?:氏名|お?名前|担当者?|宛名|差出人|送信者|契約者|名義人?|代表者?|責任者|幹事|[" + KJ + "]{0,3}長) ?[:;・] ?([" + KJ + "]{2,6})", "g") }
 ];
 const NOT_NAME = /^(?:.*[者客皆]|(?:住所|電話|年齢|性別|連絡|生年|会社|所属|部署|役職|番号|担当|名前|氏名).*|各位|貴社|御社|弊社|当社|先方|本人|ご?家族|お子|奥|旦那|神|仏|王|スタッフ|ユーザー|メンバー|オーナー|ドライバー|サポート)$/;
 const isDigit = c => c >= "0" && c <= "9";
