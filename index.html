@@ -639,6 +639,7 @@ const el = { file: $("file"), drop: $("drop"), strip: $("strip"), shotsSec: $("s
 let shots = [];
 let seq = 0, busy = false, edited = false, undoText = null, worker = null, workerLoading = null, current = null;
 
+const reason = e => "（原因：" + ((e && (e.name || "")) + " " + (e && e.message || "")).trim().slice(0, 120) + "）";
 function setStatus(msg, err) { el.status.textContent = msg || ""; el.status.classList.toggle("err", !!err); }
 function setText(t) { el.text.value = t; edited = false; undoText = null; el.undo.hidden = true; fit(); }
 function fit() {
@@ -648,16 +649,24 @@ function fit() {
 }
 
 /* ---------- intake ---------- */
-function addFiles(files) {
-  const imgs = Array.from(files).filter(f => f.type.startsWith("image/"));
-  if (!imgs.length) { setStatus("画像ファイルが見つかりませんでした。", true); return; }
+async function addFiles(files) {
+  const picked = Array.from(files).filter(f => f.type.startsWith("image/"));
+  if (!picked.length) { setStatus("画像ファイルが見つかりませんでした。", true); return; }
+  // Copy every picture into memory at once. On Android a picked file is only lent to the page: reading it
+  // a few seconds later (after the engine has loaded, or when saving the PDF) can fail.
+  let lost = 0, why = "";
+  const imgs = (await Promise.all(picked.map(f => f.arrayBuffer()
+    .then(buf => new File([buf], f.name, { type: f.type, lastModified: f.lastModified }))
+    .catch(e => { console.error(e); lost++; why = reason(e); return null; })))).filter(Boolean);
+  if (lost) setStatus(lost + "枚を読み込めませんでした。もう一度選んでください。" + why, true);
+  if (!imgs.length) return;
   // Screenshots are named and dated in the order taken, so oldest first is reading order.
   imgs.sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0) || a.name.localeCompare(b.name, "ja", { numeric: true }));
   for (const f of imgs) shots.push({ id: ++seq, name: f.name, blob: f, url: URL.createObjectURL(f), status: "wait", lines: null, progress: 0,
     w: 0, h: 0, chars: null, auto: [], off: new Set(), manual: [], edges: [], on: new Set() });
   renderStrip(); pump();
 }
-el.file.addEventListener("change", () => { addFiles(el.file.files); el.file.value = ""; });
+el.file.addEventListener("change", () => { addFiles(el.file.files).finally(() => { el.file.value = ""; }); });
 ["dragenter", "dragover"].forEach(t => el.drop.addEventListener(t, e => { e.preventDefault(); el.drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach(t => el.drop.addEventListener(t, e => { e.preventDefault(); el.drop.classList.remove("over"); }));
 el.drop.addEventListener("drop", e => addFiles(e.dataTransfer.files));
@@ -842,7 +851,7 @@ async function exportShots(kind) {
     const ok = await deliver(files);
     setStatus(!ok ? "保存をやめました。" : (kind === "pdf" ? "PDF" : "画像") + "を書き出しました（" + shots.length + "枚・黒塗り" + total + "か所）。"
       + (total ? "" : "黒塗りは1か所もありません。") + (warn ? "読み取れなかった行が" + warn + "か所、隠されずに残っています。" : ""));
-  } catch (e) { console.error(e); setStatus("書き出しに失敗しました。枚数を減らして試してください。", true); }
+  } catch (e) { console.error(e); setStatus("書き出しに失敗しました。" + reason(e), true); }
   finally { el.pdf.disabled = el.imgs.disabled = false; }
 }
 el.pdf.addEventListener("click", () => exportShots("pdf"));
@@ -930,10 +939,12 @@ async function pump() {
         s.lines = cleanText(res.data.text); s.chars = ocrChars(res.data); s.status = "done";
         s.edges = unreadBoxes(s.chars, canvas.getContext("2d").getImageData(0, 0, s.w, s.h), s.w, s.h);
         detect(s);
-      } catch (e) { s.status = "err"; s.lines = []; console.error(e); }
+      } catch (e) { s.status = "err"; s.lines = []; s.why = reason(e); console.error(e); }
       current = null; paintShot(s); renderRedact(); if (el.ed.open && edId === s.id) paintEditor();
     }
-    setStatus(shots.length ? "読み取りが終わりました。" : "");
+    const bad = shots.filter(x => x.status === "err");
+    if (bad.length) setStatus(bad.length + "枚を読み取れませんでした。その画像を消して、もう一度選んでください。" + (bad[0].why || ""), true);
+    else setStatus(shots.length ? "読み取りが終わりました。" : "");
     afterChange();
   } catch (e) {
     console.error(e);
