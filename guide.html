@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>スクショの個人情報を安全に隠す方法（マーカーは透ける）｜パシャコピー</title>
+<meta name="description" content="スクショの住所や電話番号をマーカーで塗ると、明るさを上げるだけで透けて読めることがあります。透けない隠し方と、複数のスクショをまとめて黒塗りしてPDFにする方法を説明します。">
+<meta property="og:title" content="スクショの個人情報を安全に隠す方法（マーカーは透ける）">
+<meta property="og:description" content="マーカーやぼかしで隠したつもりの文字は読めることがあります。透けない隠し方と、スクショをまとめて黒塗りする方法。">
+<meta property="og:type" content="article">
+<meta name="theme-color" content="#D7F52A">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+:root {
+  --paper: #F5F6EC; --surface: #FFFFFF; --ink: #1B1B1B; --muted: #666A55; --line: #D9DCC6;
+  --marker: #D7F52A; --marker-deep: #AACB00; --on-marker: #1B1B1B; --warn: #B4480A;
+  --font-display: "Dela Gothic One", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #16170F; --surface: #20221A; --ink: #ECEEDC; --muted: #A0A38C; --line: #3A3D2D;
+    --marker-deep: #D7F52A; --warn: #FFA368; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #16170F; --surface: #20221A; --ink: #ECEEDC; --muted: #A0A38C; --line: #3A3D2D;
+  --marker-deep: #D7F52A; --warn: #FFA368; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 17px; line-height: 1.9; }
+.wrap { max-width: 40rem; margin: 0 auto; padding: 28px 16px 64px; }
+h1 {
+  font-family: var(--font-display); font-weight: 400; font-size: 1.7rem; line-height: 1.45; margin: 0 0 16px;
+}
+h1 mark { background: linear-gradient(transparent 14%, var(--marker) 14%, var(--marker) 90%, transparent 90%); color: var(--on-marker); padding: 0 4px; }
+h2 { font-size: 1.2rem; margin: 44px 0 10px; padding-top: 14px; border-top: 1.5px solid var(--ink); }
+h3 { font-size: 1rem; margin: 24px 0 6px; }
+p { margin: 0 0 14px; }
+.lead { color: var(--muted); }
+ul, ol { margin: 0 0 14px; padding-left: 1.4em; }
+li { margin-bottom: 6px; }
+.cta {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 10px 20px;
+  background: var(--marker); color: var(--on-marker); border: 1.5px solid var(--on-marker); border-radius: 6px;
+  font-weight: 700; text-decoration: none;
+}
+.cta:focus-visible { outline: 3px solid var(--marker-deep); outline-offset: 2px; }
+.box { background: var(--surface); border: 1.5px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 0 0 16px; }
+.box.bad { border-left: 5px solid var(--warn); }
+.box.good { border-left: 5px solid var(--marker-deep); }
+.box p:last-child, .box ul:last-child { margin-bottom: 0; }
+.demo { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 0 0 16px; }
+.demo figure { margin: 0; background: var(--surface); border: 1.5px solid var(--line); border-radius: 8px; padding: 12px; }
+.demo figcaption { font-size: 0.8rem; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+.sample { font-size: 0.95rem; white-space: nowrap; color: #1B1B1B; background: #fff; padding: 6px 8px; border-radius: 4px; overflow: hidden; }
+.hl { background: rgba(250, 210, 0, 0.55); }
+.blur { filter: blur(3px); }
+.bar { background: #000; color: #000; }
+small, .note { font-size: 0.85rem; color: var(--muted); }
+footer { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 0.85rem; color: var(--muted); }
+a { color: inherit; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>スクショの個人情報、<br><mark>マーカーで隠すと透ける</mark>ことがあります</h1>
+  <p class="lead">住所や電話番号が写ったスクショを人に送る前、指でなぞって塗りつぶしていませんか。その隠し方だと、受け取った人が明るさを少し上げるだけで読めてしまうことがあります。透けない隠し方と、何枚ものスクショをまとめて安全に隠す方法を説明します。</p>
+  <p><a class="cta" href="./">パシャコピーを開く（無料・登録なし）</a></p>
+
+  <h2>隠したつもりでも読める3つのパターン</h2>
+  <div class="demo" aria-hidden="true">
+    <figure><div class="sample"><span class="hl">090-1234-5678</span></div><figcaption>蛍光ペン（マーカー）：半透明なので、下の文字が残っています</figcaption></figure>
+    <figure><div class="sample"><span class="blur">090-1234-5678</span></div><figcaption>ぼかし・モザイク：文字の形から推測されることがあります</figcaption></figure>
+    <figure><div class="sample"><span class="bar">090-1234-5678</span></div><figcaption>黒で完全に塗りつぶし：これなら読めません</figcaption></figure>
+  </div>
+  <div class="box bad">
+    <h3>1. マーカー（蛍光ペン）で塗る</h3>
+    <p>写真アプリの編集にあるマーカーは半透明です。見た目は隠れていても下の文字は消えておらず、画像の明るさやコントラストを上げると浮かび上がることがあります。ペンでも、塗りムラや薄い色だと同じことが起きます。</p>
+  </div>
+  <div class="box bad">
+    <h3>2. ぼかし・モザイクをかける</h3>
+    <p>弱いぼかしや粗いモザイクは、文字の太さや並びがある程度残ります。とくに電話番号やカード番号のように使われる文字が限られるものは、形から推測される危険があります。</p>
+  </div>
+  <div class="box bad">
+    <h3>3. PDFの上に黒い四角を置く</h3>
+    <p>文字の入ったPDFに図形を重ねただけだと、下の文字データはそのまま残ります。四角の上からなぞってコピーすると、隠したはずの文字が貼り付けられることがあります。</p>
+  </div>
+
+  <h2>透けない隠し方のポイント</h2>
+  <div class="box good">
+    <ul>
+      <li><b>不透明な黒で、文字より少し大きめに塗る。</b>文字の端や下線がはみ出さないようにします。</li>
+      <li><b>塗った結果を「画像として」保存し直す。</b>塗った線が後から動かせる状態ではなく、画像そのものに焼き込まれていることが大事です。</li>
+      <li><b>端で切れた行も見落とさない。</b>スクロールして撮ったスクショは、上下の端で行が半分切れていても読めることがあります。</li>
+      <li><b>写っている人の名前も確認する。</b>チャット画面の上の相手の名前や、「担当の〇〇」のような書き方は見落としやすい部分です。</li>
+    </ul>
+  </div>
+  <p>1枚なら手作業でもできますが、チャットや手続きのやり取りを何枚も送るときは、全部を確認して塗るのはかなりの手間です。</p>
+
+  <h2>パシャコピーで、まとめて黒塗りする</h2>
+  <p>パシャコピーは、スクショを何枚でも選ぶと個人情報を自動で見つけて黒塗りし、1つのPDFや画像にまとめるウェブアプリです。インストールも登録もいりません。</p>
+  <ol>
+    <li><b>スクショをまとめて選ぶ。</b>スクロールしながら撮った何枚ものスクショでも大丈夫です。</li>
+    <li><b>自動で見つかった部分を確認する。</b>電話番号・メール・住所・郵便番号・名前・カードや口座の番号を見つけて黒塗りにします。スクショをタップすると、解除したり、なぞって範囲を足したりできます。</li>
+    <li><b>黄色の部分を確認する。</b>画面の端で切れて読み取れなかった行は、黄色で「要確認」と表示します。タップで隠せます。</li>
+    <li><b>保存する。</b>「黒塗りしてPDFで保存」で1つのPDFに、「つなげて1枚の画像で保存」で重なりを除いた縦長の1枚にまとめられます。</li>
+  </ol>
+  <div class="box good">
+    <p><b>画像は外に送られません。</b>読み取りも黒塗りも、すべてお使いのスマホやパソコンの中で行います。PDFは黒塗り済みの画像だけでできていて、下に文字データは残りません。</p>
+  </div>
+  <p><a class="cta" href="./">パシャコピーを開く</a></p>
+
+  <h2>うまく使うコツ</h2>
+  <ul>
+    <li><b>名前は「隠したい言葉」に入れておく。</b>「田中さん」「担当：鈴木」のような書き方は自動で見つけますが、敬称のない名前やひらがなの名前は見つけられません。よく出てくる名前や会社名を登録しておくと、全部のスクショで隠れます。</li>
+    <li><b>スクロールして撮るときは、数行ずつ重ねて撮る。</b>前の画面の下の方が次の画面の上に残るように撮ると、重なりを自動で取り除いて1本につなげます。</li>
+    <li><b>保存前に一度は目で確かめる。</b>自動検出は完璧ではありません。とくに小さな文字や、背景に色のある部分は見落とすことがあります。</li>
+  </ul>
+  <p class="note">Androidでホーム画面に追加すると、ギャラリーの「共有」から直接スクショを送れます。iPhoneでは、アプリ内の「スクショを選ぶ」から選んでください。</p>
+
+  <footer>
+    <p>パシャコピーは個人開発の無料ツールです。スクショの文字を読み取って1本の文章につなげる機能もあります。</p>
+  </footer>
+</main>
+</body>
+</html>

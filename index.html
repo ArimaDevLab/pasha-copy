@@ -188,7 +188,8 @@ details pre {
 .hist span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
 .empty { font-size: 0.85rem; color: var(--muted); margin: 0; }
 footer { font-size: 0.75rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; }
-footer p { margin: 0; }
+footer p { margin: 0 0 6px; }
+footer a { color: inherit; }
 </style>
 
 </head>
@@ -235,6 +236,7 @@ footer p { margin: 0; }
     <div class="row">
       <button id="pdf" class="primary" type="button">黒塗りしてPDFで保存</button>
       <button id="imgs" class="quiet" type="button">画像で保存</button>
+      <button id="long" class="quiet" type="button">つなげて1枚の画像で保存</button>
     </div>
   </section>
 
@@ -265,7 +267,10 @@ footer p { margin: 0; }
     <div class="row"><button id="histClear" class="quiet" type="button" hidden>履歴を消す</button></div>
   </section>
 
-  <footer><p>画像と文章はこの端末の中だけで処理され、外部には送られません。隠したい言葉の設定も、この端末の中だけに保存されます。</p></footer>
+  <footer>
+    <p>画像と文章はこの端末の中だけで処理され、外部には送られません。隠したい言葉の設定も、この端末の中だけに保存されます。</p>
+    <p><a href="guide.html">使い方と、スクショの個人情報を安全に隠すコツ</a></p>
+  </footer>
 </div>
 
 <dialog id="ed" aria-labelledby="edTitle">
@@ -651,7 +656,7 @@ const el = { file: $("file"), drop: $("drop"), strip: $("strip"), shotsSec: $("s
   status: $("status"), text: $("text"), report: $("report"), charCount: $("charCount"), stale: $("stale"),
   dedupe: $("dedupe"), copy: $("copy"), join: $("join"), undo: $("undo"), hist: $("hist"),
   histEmpty: $("histEmpty"), histCount: $("histCount"), histClear: $("histClear"),
-  redactSec: $("redactSec"), redactCount: $("redactCount"), cats: $("cats"), words: $("words"), pdf: $("pdf"), imgs: $("imgs"),
+  redactSec: $("redactSec"), redactCount: $("redactCount"), cats: $("cats"), words: $("words"), pdf: $("pdf"), imgs: $("imgs"), long: $("long"),
   ed: $("ed"), edTitle: $("edTitle"), edPrev: $("edPrev"), edNext: $("edNext"), edAdd: $("edAdd"), edHint: $("edHint"),
   stage: $("stage"), edImg: $("edImg") };
 
@@ -885,7 +890,7 @@ async function deliver(files) {
 async function exportShots(kind) {
   if (!shots.length) return;
   if (shots.some(s => s.status === "wait" || s.status === "run")) { setStatus("読み取りが終わってから保存してください。", true); return; }
-  el.pdf.disabled = el.imgs.disabled = true;
+  el.pdf.disabled = el.imgs.disabled = el.long.disabled = true;
   try {
     const total = shots.reduce((n, s) => n + hidden(s).length, 0), warn = shots.reduce((n, s) => n + pending(s).length, 0);
     const stem = stamp(), files = [], pages = [];
@@ -900,10 +905,125 @@ async function exportShots(kind) {
     setStatus(!ok ? "保存をやめました。" : (kind === "pdf" ? "PDF" : "画像") + "を書き出しました（" + shots.length + "枚・黒塗り" + total + "か所）。"
       + (total ? "" : "黒塗りは1か所もありません。") + (warn ? "読み取れなかった行が" + warn + "か所、隠されずに残っています。" : ""));
   } catch (e) { console.error(e); setStatus("書き出しに失敗しました。" + reason(e), true); }
-  finally { el.pdf.disabled = el.imgs.disabled = false; }
+  finally { el.pdf.disabled = el.imgs.disabled = el.long.disabled = false; }
 }
 el.pdf.addEventListener("click", () => exportShots("pdf"));
 el.imgs.addEventListener("click", () => exportShots("png"));
+
+/* ---------- one tall picture from screenshots taken while scrolling ----------
+   Each row of a screenshot is boiled down to 64 brightness values. Two screenshots of the same page,
+   scrolled, share rows: the bottom of one reappears higher up in the next. Bars that never move
+   (status bar, title, input box) sit at the same place in both and are kept only once. */
+const PC = 64;
+async function rowPrints(s) {
+  const bmp = await createImageBitmap(s.blob), W = bmp.width, H = bmp.height;
+  const c = document.createElement("canvas"); c.width = PC; c.height = H;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(bmp, 0, 0, PC, H);                       // squeeze sideways only: every row keeps its height
+  const d = ctx.getImageData(0, 0, PC, H).data, full = new Uint8Array(H * PC);
+  for (let i = 0, p = 0; i < full.length; i++, p += 4) full[i] = (d[p] * 77 + d[p + 1] * 150 + d[p + 2] * 29) >> 8;
+  const h = H >> 2, rows = new Uint8Array(h * PC);      // a quarter-height copy for the wide search
+  for (let y = 0; y < h; y++) for (let k = 0; k < PC; k++) {
+    const i = 4 * y * PC + k;
+    rows[y * PC + k] = (full[i] + full[i + PC] + full[i + 2 * PC] + full[i + 3 * PC]) >> 2;
+  }
+  return { bmp, W, H, full, h, rows };
+}
+function rowDiff(a, ia, b, ib) { let t = 0; ia *= PC; ib *= PC; for (let k = 0; k < PC; k++) t += Math.abs(a[ia + k] - b[ib + k]); return t / PC; }
+function rowInk(a, i) { let lo = 255, hi = 0; i *= PC; for (let k = 0; k < PC; k++) { const v = a[i + k]; if (v < lo) lo = v; if (v > hi) hi = v; } return hi - lo > 24; }
+
+// How B continues A. Returns {top, bot, s} in pixels: fixed bars at the top and bottom, and the shift s
+// (B's row y shows what A showed at row y + s), or s = null when no common rows were found.
+function alignShots(A, B) {
+  if (A.W !== B.W) return null;
+  const a = A.rows, b = B.rows, ha = A.h, hb = B.h, hm = Math.min(ha, hb), same = (ya, yb) => rowDiff(a, ya, b, yb) < 6;
+  // A fixed bar is mostly identical in both, but not entirely: the clock in the status bar moves on.
+  // So the bar is the longest stretch from the edge in which at least three rows in four agree.
+  let top = 0, bot = 0;
+  for (let y = 0, m = 0; y < hm * 0.4; y++) if (same(y, y) && ++m >= (y + 1) * 0.75) top = y + 1;
+  for (let y = 0, m = 0; y < hm * 0.25; y++) if (same(ha - 1 - y, hb - 1 - y) && ++m >= (y + 1) * 0.75) bot = y + 1;
+  if (ha === hb && top + bot >= ha - 2) return { top: 0, bot: 0, s: 0 };   // the same picture twice
+  const a1 = ha - bot, b1 = hb - bot, inkB = [];
+  for (let y = 0; y < hb; y++) inkB[y] = rowInk(b, y);
+  let best = null;
+  for (let s = 1; s < a1 - top - 6; s++) {
+    let t = 0, n = 0;
+    for (let y = top, end = Math.min(b1, a1 - s); y < end; y++) {
+      if (!inkB[y]) continue;                                         // blank rows match anything
+      t += rowDiff(a, y + s, b, y); n++;
+      if (n > 8 && t / n > 20) break;
+    }
+    if (n >= 6 && (!best || t / n < best.cost)) best = { s, cost: t / n };
+  }
+  // The quarter-height copy can sit half a row off, so be lenient here and strict after settling.
+  if (!best || best.cost > 14) return { top: top * 4, bot: bot * 4, s: null };
+  // Settle the exact row on the full-height prints.
+  let S = best.s * 4, low = Infinity;
+  for (let s = Math.max(1, S - 5); s <= S + 5; s++) {
+    let t = 0, n = 0;
+    for (let y = top * 4, end = Math.min(B.H - bot * 4, A.H - bot * 4 - s); y < end; y += 2) {
+      if (!rowInk(B.full, y)) continue;
+      t += rowDiff(A.full, y + s, B.full, y); n++;
+    }
+    if (n && t / n < low) { low = t / n; S = s; }
+  }
+  return { top: top * 4, bot: bot * 4, s: low < 5 ? S : null };
+}
+
+async function exportLong() {
+  if (!shots.length) return;
+  if (shots.some(s => s.status === "wait" || s.status === "run")) { setStatus("読み取りが終わってから保存してください。", true); return; }
+  el.pdf.disabled = el.imgs.disabled = el.long.disabled = true;
+  const P = [];
+  try {
+    setStatus("つなぎ目を探しています…");
+    for (const s of shots) P.push(await rowPrints(s));
+    // Lay the pictures out top to bottom. Picture i shows its rows [start, end); its row y lands at
+    // y * f + G in the result. Overlapping rows come from the earlier picture.
+    const W = P[0].W, L = P.map(p => ({ f: W / p.W, start: 0, end: p.H, lo: 0, G: 0 }));
+    let joined = 0;
+    for (let i = 1; i < P.length; i++) {
+      const r = alignShots(P[i - 1], P[i]), A = L[i - 1], B = L[i];
+      A.end = P[i - 1].H - (r ? r.bot : 0);
+      if (r && r.s != null) {
+        joined++;
+        B.lo = r.top; B.start = Math.max(r.top, A.end - r.s); B.G = A.G + r.s * A.f;
+      } else {
+        // Nothing in common: start on a new stretch, after a grey band that marks the gap.
+        const gap = Math.round(W * 0.03);
+        B.lo = B.start = r ? r.top : 0; B.G = A.end * A.f + A.G + gap - B.start * B.f;
+      }
+      if (B.start > B.end) B.start = B.end;
+    }
+    const last = L[L.length - 1], total = Math.ceil(last.end * last.f + last.G);
+    // Phones refuse very large canvases: shrink the whole picture if it would be too big.
+    const k = Math.min(1, Math.sqrt(16e6 / (W * total)), 32000 / total);
+    const c = document.createElement("canvas"); c.width = Math.round(W * k); c.height = Math.round(total * k);
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#9a9a9a"; ctx.fillRect(0, 0, c.width, c.height);
+    L.forEach((l, i) => {
+      if (l.end > l.start) ctx.drawImage(P[i].bmp, 0, l.start, P[i].W, l.end - l.start,
+        0, (l.start * l.f + l.G) * k, W * k, (l.end - l.start) * l.f * k);
+    });
+    // Black out everything each picture had marked, including in rows the earlier picture supplied:
+    // whatever either picture found stays hidden.
+    ctx.fillStyle = "#000";
+    L.forEach((l, i) => {
+      for (const b of hidden(shots[i])) {
+        const y0 = Math.max(b.y, l.lo), y1 = Math.min(b.y + b.h, l.end); if (y1 <= y0) continue;
+        ctx.fillRect(Math.floor(b.x * l.f * k), Math.floor((y0 * l.f + l.G) * k), Math.ceil(b.w * l.f * k) + 1, Math.ceil((y1 - y0) * l.f * k) + 1);
+      }
+    });
+    const file = new File([await toBlob(c, "image/png")], stamp() + "_long.png", { type: "image/png" });
+    const warn = shots.reduce((n, s) => n + pending(s).length, 0);
+    const ok = await deliver([file]);
+    setStatus(!ok ? "保存をやめました。" : shots.length + "枚をつなげて1枚の画像にしました。"
+      + (P.length > 1 ? (joined === P.length - 1 ? "" : "重なりが見つからなかった" + (P.length - 1 - joined) + "か所は、灰色の帯で区切っています（並び順を確かめてください）。") : "")
+      + (k < 1 ? "長いので縮小しています。" : "") + (warn ? "読み取れなかった行が" + warn + "か所、隠されずに残っています。" : ""));
+  } catch (e) { console.error(e); setStatus("書き出しに失敗しました。" + reason(e), true); }
+  finally { P.forEach(p => p.bmp.close && p.bmp.close()); el.pdf.disabled = el.imgs.disabled = el.long.disabled = false; }
+}
+el.long.addEventListener("click", exportLong);
 
 /* ---------- redaction editor: one screenshot, large ---------- */
 let edId = 0, adding = false, draft = null;
