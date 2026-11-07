@@ -444,6 +444,8 @@ const CAT_LABEL = Object.assign({ word: "指定した言葉", manual: "手で足
 const HY = "\\-‐‑‒–—―−ーｰ一";                 // everything the engine may read a hyphen as
 const SEP = "[ " + HY + "]{0,3}";
 const KJ = "\\u4e00-\\u9fff々";
+const LABEL = "(?:氏名|お?名前|担当者?|宛名|差出人|送信者|契約者|名義人?|代表者?|責任者|幹事|[" + KJ + "]{0,3}長)";
+const NAME_BODY = "[" + KJ + "]{1,4} [" + KJ + "]{1,4}|[" + KJ + "]{2,6}|[ァ-ヴー]{2,8} [ァ-ヴー]{2,8}";
 const PREF = "(?:北海道|東京都|(?:大阪|京都)府|(?:青森|岩手|宮城|秋田|山形|福島|茨城|栃木|群馬|埼玉|千葉|神奈川|新潟|富山|石川|福井|山梨|長野|岐阜|静岡|愛知|三重|滋賀|兵庫|奈良|和歌山|鳥取|島根|岡山|広島|山口|徳島|香川|愛媛|高知|福岡|佐賀|長崎|熊本|大分|宮崎|鹿児島|沖縄)県)";
 const RULES = [
   { cat: "mail", re: /[A-Za-z0-9._%+\-]+ ?@ ?[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+/g },
@@ -458,10 +460,18 @@ const RULES = [
   { cat: "addr", re: new RegExp(PREF + "(?:[" + KJ + "]{1,6}[市区町村郡]){1,2}", "g") },
   // Names are only recognisable from what surrounds them: an honorific after, or a label before.
   { cat: "name", group: true, name: true, re: new RegExp("([" + KJ + "]{2,5}|[ァ-ヴー]{2,8})(?:さん|様|さま|くん|ちゃん|先生)", "g") },
+  // "山田 太郎様": family and given name with a space between (a separate rule, so that a rejected
+  // longer reading such as "連絡 田中" still leaves "田中さん" to the rule above).
+  { cat: "name", group: true, name: true, re: new RegExp("([" + KJ + "]{1,4} [" + KJ + "]{1,4}|[ァ-ヴー]{2,8} [ァ-ヴー]{2,8})(?:さん|様|さま|くん|ちゃん|先生)", "g") },
   // A name after a label sits on the label's line; letting it run on into the next line ate "連絡" of "連絡先".
-  { cat: "name", group: true, name: true, one: true, re: new RegExp("(?:氏名|お?名前|担当者?|宛名|差出人|送信者|契約者|名義人?|代表者?|責任者|幹事|[" + KJ + "]{0,3}長) ?[:;・] ?([" + KJ + "]{2,6})", "g") }
+  // The label may be followed by a colon or only by space: forms and record screens put the label in its own
+  // column ("名前    河野　祐作"). A space is required when there is no colon, so "名前変更" is left alone.
+  { cat: "name", group: true, name: true, one: true, re: new RegExp(LABEL + "(?: ?[:;・] ?| )(" + NAME_BODY + ")", "g") }
 ];
-const NOT_NAME = /^(?:.*[者客皆]|(?:住所|電話|年齢|性別|連絡|生年|会社|所属|部署|役職|番号|担当|名前|氏名).*|各位|貴社|御社|弊社|当社|先方|本人|ご?家族|お子|奥|旦那|神|仏|王|スタッフ|ユーザー|メンバー|オーナー|ドライバー|サポート)$/;
+// A line holding nothing but such a label: the name is on the line below (kintone's record screen).
+const reLabelCell = new RegExp("(^| )(" + LABEL + ")(?=$| |[:;・])", "g");
+const reLabelLine = new RegExp("^ ?" + LABEL + "(?: ?[:;・])? ?$"), reNameStart = new RegExp("^ ?(" + NAME_BODY + ")");
+const NOT_NAME = /^(?:.*[者客皆]|(?:住所|電話|年齢|性別|連絡|生年|会社|所属|部署|役職|番号|担当|名前|氏名|対応|状況|状態|期限|日付|日時|件名|内容|備考|種別|区分|分類|金額|数量|ステータス|フリガナ).*|各位|貴社|御社|弊社|当社|先方|本人|ご?家族|お子|奥|旦那|神|仏|王|スタッフ|ユーザー|メンバー|オーナー|ドライバー|サポート)$/;
 const isDigit = c => c >= "0" && c <= "9";
 
 function splitWords(str) { return (str || "").normalize("NFKC").split(/[\s,、，]+/).map(w => w.trim().toLowerCase()).filter(Boolean); }
@@ -480,6 +490,8 @@ function findPII(s, cats, words) {
         const n = m[0].replace(/\D/g, "").length;
         if (n < r.digits[0] || n > r.digits[1] || isDigit(s[start - 1] || "") || isDigit(s[end] || "")) { r.re.lastIndex = m.index + 1; continue; }
       }
+      // "住所" on the line above, read as one with the address: the label itself is not the address.
+      if (r.cat === "addr") { const lab = /^(?:現?住所|所在地|送付先|届け先|宛先) ?[:;・]? ?/.exec(m[0]); if (lab) start += lab[0].length; }
       if (r.group) {
         if (r.name && NOT_NAME.test(m[1])) continue;
         start = m.index + (r.name && m[0].startsWith(m[1]) ? 0 : m[0].lastIndexOf(m[1])); end = start + m[1].length;
@@ -502,9 +514,15 @@ function findPII(s, cats, words) {
 // (an address, "普/通 1234567"). wraps(i) says whether line i+1 continues line i.
 // Returns, per line, the ranges to hide; a hit that spans two lines comes back as two ranges sharing an id.
 const reJP1 = new RegExp("[" + JP + "]");
-function findWrapped(strs, cats, words, wraps) {
+function findWrapped(strs, cats, words, wraps, below) {
   const per = strs.map(t => findPII(t, cats, words));
   let id = 0; per.forEach(hs => hs.forEach(h => (h.id = ++id)));
+  if (cats.name) for (let i = 0; i + 1 < strs.length; i++) {
+    if (!reLabelLine.test(strs[i] || "") || !(below || wraps)(i)) continue;
+    const m = reNameStart.exec(strs[i + 1] || ""); if (!m || NOT_NAME.test(m[1])) continue;
+    const start = m[0].length - m[1].length, end = m[0].length;
+    if (!per[i + 1].some(x => x.start < end && start < x.end)) per[i + 1].push({ cat: "name", start, end, id: ++id });
+  }
   for (let i = 0; i + 1 < strs.length; i++) {
     const A = strs[i], B = strs[i + 1]; if (!A || !B || !wraps(i)) continue;
     const glue = reJP1.test(A[A.length - 1]) || reJP1.test(B[0]) ? "" : " ", cut = A.length + glue.length;
@@ -550,16 +568,72 @@ function ocrChars(data) {
       if (chars.length && first && !jp.test(chars[chars.length - 1].ch) && !jp.test(first)) chars.push({ ch: " ", b: null });
       for (const sy of syms) for (const ch of (sy.text || "").normalize("NFKC")) if (ch.trim()) chars.push({ ch, b: sy.bbox });
     }
+    // The engine drops the spaces between Japanese letters, but a label and its value, or a family and a given
+    // name, are set apart by a clear gap. Put a space back where the gap is over 1.5 letters: drifting letter
+    // boxes open false gaps of up to about 1.1 ("口座 番号"), while a label and its value sit 2.7 or more apart.
+    const hs = chars.filter(c => c.b).map(c => c.b.y1 - c.b.y0).sort((a, b) => a - b), lh = hs.length ? hs[hs.length >> 1] : 0;
+    if (lh) for (let i = chars.length - 1; i > 0; i--) {
+      const a = chars[i - 1], b = chars[i];
+      if (a.b && b.b && a.ch !== " " && b.ch !== " " && b.b.x0 - a.b.x1 > lh * 1.5) chars.splice(i, 0, { ch: " ", b: null });
+    }
     if (chars.length) { chars.box = ln.bbox || null; chars.conf = ln.confidence == null ? 100 : ln.confidence; lines.push(chars); }
   }
   return lines;
+}
+
+// Where letters start..end-1 would sit if each run of letters (between spaces) were laid out evenly:
+// full-width letters 1, half-width 0.55. Only for mostly full-width runs; proportional Latin text is not even.
+const reFull = /[\u3000-\u30ff\u3400-\u9fff\uff00-\uff60\uffe0-\uffe6]/;
+function evenSpan(chars, start, end) {
+  let lo = Infinity, hi = -Infinity;
+  const wt = c => reFull.test(c.ch) ? 1 : 0.55;
+  for (let i = start; i < end; i++) {
+    if (chars[i].ch === " ") continue;
+    let r0 = i, r1 = i;
+    while (r0 > 0 && chars[r0 - 1].ch !== " ") r0--;
+    while (r1 < chars.length && chars[r1].ch !== " ") r1++;
+    const run = chars.slice(r0, r1), withBox = run.filter(c => c.b);
+    const pe = Math.min(end, r1);
+    if (withBox.length && run.filter(c => !reFull.test(c.ch)).length <= run.length * 0.3) {
+      const x0 = Math.min(...withBox.map(c => c.b.x0)), x1 = Math.max(...withBox.map(c => c.b.x1));
+      let total = 0, a = 0, b = 0;
+      run.forEach((c, k) => { const w = wt(c); if (r0 + k < i) a += w; if (r0 + k < pe) b += w; total += w; });
+      const k = (x1 - x0) / total;
+      lo = Math.min(lo, x0 + a * k); hi = Math.max(hi, x0 + b * k);
+    }
+    i = pe - 1;
+  }
+  return lo < hi ? [lo, hi] : null;
 }
 
 function boxesFor(lines, cats, words, W, H) {
   const out = [];
   // A wrapped line sits right under the one before it; a new chat bubble or section leaves a clear gap.
   const wraps = i => { const a = lines[i].box, b = lines[i + 1].box; return !!a && !!b && b.y0 > a.y0 && b.y0 - a.y1 < (a.y1 - a.y0) * 1.3; };
-  const per = findWrapped(lines.map(chars => chars.map(c => c.ch).join("")), cats, words, wraps);
+  const below = i => { const a = lines[i].box, b = lines[i + 1].box; return !!a && !!b && b.y0 > a.y0 && b.y0 - a.y1 < Math.max(a.y1 - a.y0, b.y1 - b.y0) * 2; };
+  const per = findWrapped(lines.map(chars => chars.map(c => c.ch).join("")), cats, words, wraps, below);
+  // A row of labels with the values on the row below (kintone's record screen: "名前  電話番号  メールアドレス"
+  // over "河野 祐作  03-…"). The name is the value that starts right under the label.
+  if (cats.name) for (let i = 0; i + 1 < lines.length; i++) {
+    if (!below(i)) continue;
+    const A = lines[i], B = lines[i + 1], ta = A.map(c => c.ch).join(""), tb = B.map(c => c.ch).join("");
+    reLabelCell.lastIndex = 0;
+    let m;
+    while ((m = reLabelCell.exec(ta))) {
+      const l0 = m.index + m[1].length, lab = A.slice(l0, l0 + m[2].length).filter(c => c.b);
+      if (!lab.length) continue;
+      const x0 = lab[0].b.x0, tol = Math.max((lab[0].b.y1 - lab[0].b.y0) * 2, 6);
+      let j = -1, best = Infinity;
+      B.forEach((c, k) => {
+        if (!c.b || (k > 0 && B[k - 1].ch !== " ")) return;   // only the start of a value
+        const d = Math.abs(c.b.x0 - x0); if (d <= tol && d < best) { best = d; j = k; }
+      });
+      if (j < 0) continue;
+      const n = reNameStart.exec(tb.slice(j)); if (!n || NOT_NAME.test(n[1])) continue;
+      const start = j + n[0].length - n[1].length, end = j + n[0].length;
+      if (!per[i + 1].some(x => x.start < end && start < x.end)) per[i + 1].push({ cat: "name", start, end });
+    }
+  }
   lines.forEach((chars, li) => {
     for (const hit of per[li]) {
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -567,6 +641,11 @@ function boxesFor(lines, cats, words, W, H) {
         const b = chars[i].b; if (!b) continue;
         x0 = Math.min(x0, b.x0); y0 = Math.min(y0, b.y0); x1 = Math.max(x1, b.x1); y1 = Math.max(y1, b.y1);
       }
+      // The engine's letter boxes drift: one letter read too wide pushes every later letter sideways
+      // ("担" 33-92 left "田" uncovered in "担当の田中さん"). Mostly full-width lines are laid out evenly,
+      // so also estimate where the letters sit from the line's own width, and cover both.
+      const est = evenSpan(chars, hit.start, hit.end);
+      if (est) { x0 = Math.min(x0, est[0]); x1 = Math.max(x1, est[1]); }
       if (x1 <= x0 || y1 <= y0) continue;
       // One stray tall letter box should not black out the neighbouring lines.
       if (chars.box) { y0 = Math.max(y0, chars.box.y0); y1 = Math.min(y1, chars.box.y1); if (y1 <= y0) continue; }
@@ -712,7 +791,7 @@ function toggle(s, a) {
   const h = isHidden(s, a);
   if (a.warn && !cfg.strict) h ? s.on.delete(a.key) : s.on.add(a.key); else h ? s.off.add(a.key) : s.off.delete(a.key);
 }
-const stateLabel = s => ({ wait: "待機中", run: "読み取り中", done: s.lines && s.lines.length ? s.lines.length + "行" : "文字なし", err: "失敗" })[s.status]
+const stateLabel = s => ({ wait: "待機中", run: s.again ? "拡大して読み直し中" : "読み取り中", done: s.lines && s.lines.length ? s.lines.length + "行" : "文字なし", err: "失敗" })[s.status]
   + (hidden(s).length ? " ■" + hidden(s).length : "") + (pending(s).length ? " ⚠" + pending(s).length : "");
 function renderStrip() {
   el.shotsSec.hidden = shots.length === 0;
@@ -785,10 +864,13 @@ function getWorker() {
 }
 
 // Dark-mode screenshots read much better once flipped to dark-on-light.
-async function prepare(blob) {
+// k: enlarge by this much first (small text on a computer screenshot reads far better bigger).
+async function prepare(blob, k = 1) {
   const bmp = await createImageBitmap(blob);
-  const c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height;
-  const ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(bmp, 0, 0);
+  const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  if (k !== 1) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); }
+  ctx.drawImage(bmp, 0, 0, c.width, c.height);
   const img = ctx.getImageData(0, 0, c.width, c.height), d = img.data;
   let sum = 0, n = 0;
   for (let p = 0; p < d.length; p += 4 * 97) { sum += d[p] * 0.299 + d[p + 1] * 0.587 + d[p + 2] * 0.114; n++; }
@@ -831,6 +913,22 @@ let cfg = { cats: Object.fromEntries(CATS.map(c => [c[0], true])), words: "", st
 try { const saved = JSON.parse(localStorage.getItem(RKEY) || "null"); if (saved) { Object.assign(cfg.cats, saved.cats); cfg.words = saved.words || ""; cfg.strict = !!saved.strict; } } catch (e) {}
 function saveCfg() { try { localStorage.setItem(RKEY, JSON.stringify(cfg)); } catch (e) {} }
 
+// How much to enlarge for a second reading: 1 means not needed. Measured on the letters themselves.
+const SMALL_CHAR = 24, TARGET_CHAR = 56, MAX_UP = 4, MAX_PIXELS = 14e6;
+function enlargeBy(lines, W, H) {
+  const hs = lines.flatMap(l => l.filter(c => c.b).map(c => c.b.y1 - c.b.y0)).sort((a, b) => a - b);
+  const med = hs.length ? hs[hs.length >> 1] : 0;
+  if (!med || med >= SMALL_CHAR) return 1;
+  const up = Math.min(TARGET_CHAR / med, MAX_UP, Math.sqrt(MAX_PIXELS / (W * H)));
+  return up >= 1.4 ? up : 1;
+}
+// Letter positions read from an enlarged copy, back in the screenshot's own pixels.
+function shrinkLines(lines, k) {
+  if (k === 1) return lines;
+  const f = b => b && { x0: b.x0 / k, y0: b.y0 / k, x1: b.x1 / k, y1: b.y1 / k };
+  for (const l of lines) { l.box = f(l.box); l.forEach(c => { c.b = f(c.b); }); }
+  return lines;
+}
 function detect(s) { s.auto = (s.chars && s.w ? boxesFor(s.chars, cfg.cats, splitWords(cfg.words), s.w, s.h) : []).concat(s.edges); }
 function redetectAll() { shots.forEach(s => { detect(s); paintShot(s); }); renderRedact(); if (el.ed.open) paintEditor(); }
 
@@ -1101,11 +1199,21 @@ async function pump() {
       const idx = shots.indexOf(s) + 1;
       setStatus(idx + "枚目を読み取り中（全" + shots.length + "枚）");
       try {
-        const canvas = await prepare(s.blob);
-        const res = await w.recognize(canvas, {}, { text: true, blocks: true });
+        let canvas = await prepare(s.blob), k = 1;
+        let res = await w.recognize(canvas, {}, { text: true, blocks: true });
         s.w = canvas.width; s.h = canvas.height;
-        s.lines = cleanText(textByLayout(res.data)); s.chars = ocrChars(res.data); s.status = "done";
-        s.edges = unreadBoxes(s.chars, canvas.getContext("2d").getImageData(0, 0, s.w, s.h), s.w, s.h);
+        // A computer screenshot's 10-13px text is misread ("名前" as "四"): measure the letters and, if they are
+        // small, read once more enlarged. Phone screenshots have large letters and are read only once.
+        const up = enlargeBy(ocrChars(res.data), s.w, s.h);
+        if (up > 1) {
+          s.progress = 0; s.again = true; paintShot(s);
+          canvas = await prepare(s.blob, up); k = up;
+          res = await w.recognize(canvas, {}, { text: true, blocks: true });
+        }
+        s.again = false;
+        s.lines = cleanText(textByLayout(res.data)); s.chars = shrinkLines(ocrChars(res.data), k); s.status = "done";
+        s.edges = unreadBoxes(ocrChars(res.data), canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height), canvas.width, canvas.height)
+          .map(b => Object.assign(b, { x: b.x / k, y: b.y / k, w: b.w / k, h: b.h / k }));
         detect(s);
       } catch (e) { s.status = "err"; s.lines = []; s.why = reason(e); console.error(e); }
       current = null; paintShot(s); renderRedact(); if (el.ed.open && edId === s.id) paintEditor();
