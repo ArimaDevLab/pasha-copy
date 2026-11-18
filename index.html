@@ -231,7 +231,7 @@ footer a { color: inherit; }
       <span id="warnMsg"></span>
       <button id="warnAll" type="button">まとめて隠す</button>
     </div>
-    <label class="check"><input id="strict" type="checkbox"> 読み取れなかった行（端で切れた行など）も自動で隠す（厳重モード）</label>
+    <label class="check"><input id="strict" type="checkbox"> 黄色の部分（読み取れなかった行・名前かもしれない言葉）も最初から隠す（厳重モード）</label>
     <p class="hint">スクショをタップすると、黒塗りの解除や追加ができます。自動検出は見落とすことがあるので、保存する前に必ず確認してください。</p>
     <div class="row">
       <button id="pdf" class="primary" type="button">黒塗りしてPDFで保存</button>
@@ -440,12 +440,14 @@ function joinLines(text) {
    Works on one line of text at a time and returns character ranges; the caller maps them to
    pixels (screenshots) or to the text itself (the joined text). */
 const CATS = [["tel", "電話番号"], ["mail", "メール"], ["addr", "住所・郵便番号"], ["name", "名前"], ["num", "カード・口座などの番号"]];
-const CAT_LABEL = Object.assign({ word: "指定した言葉", manual: "手で足した範囲", edge: "読み取れなかった行" }, Object.fromEntries(CATS));
+const CAT_LABEL = Object.assign({ word: "指定した言葉", manual: "手で足した範囲", edge: "読み取れなかった行", maybe: "名前かもしれない言葉" }, Object.fromEntries(CATS));
 const HY = "\\-‐‑‒–—―−ーｰ一";                 // everything the engine may read a hyphen as
 const SEP = "[ " + HY + "]{0,3}";
 const KJ = "\\u4e00-\\u9fff々";
 const LABEL = "(?:氏名|お?名前|担当者?|宛名|差出人|送信者|契約者|名義人?|代表者?|責任者|幹事|[" + KJ + "]{0,3}長)";
 const NAME_BODY = "[" + KJ + "]{1,4} [" + KJ + "]{1,4}|[" + KJ + "]{2,6}|[ァ-ヴー]{2,8} [ァ-ヴー]{2,8}";
+// A municipality: kanji, but also kana (さいたま市, つくば市, いわき市, 南アルプス市).
+const MUNI = "[" + KJ + "ぁ-んァ-ヶー]{1,6}";
 const PREF = "(?:北海道|東京都|(?:大阪|京都)府|(?:青森|岩手|宮城|秋田|山形|福島|茨城|栃木|群馬|埼玉|千葉|神奈川|新潟|富山|石川|福井|山梨|長野|岐阜|静岡|愛知|三重|滋賀|兵庫|奈良|和歌山|鳥取|島根|岡山|広島|山口|徳島|香川|愛媛|高知|福岡|佐賀|長崎|熊本|大分|宮崎|鹿児島|沖縄)県)";
 const RULES = [
   { cat: "mail", re: /[A-Za-z0-9._%+\-]+ ?@ ?[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+/g },
@@ -456,8 +458,8 @@ const RULES = [
   // A postal code needs its mark or its hyphen; seven bare digits could be anything.
   { cat: "addr", digits: [7, 7], re: new RegExp("〒 ?\\d{3}" + SEP + "\\d{4}|\\d{3} ?[" + HY + "] ?\\d{4}", "g") },
   // Street address: municipality, then a block number such as 1-2-3 or 1丁目.
-  { cat: "addr", re: new RegExp(PREF + "?[" + KJ + "]{1,6}[市区郡][" + KJ + "ぁ-んァ-ヶー]{0,12}?\\d{1,4}(?:丁目|番地?|[" + HY + "]\\d)(?:\\d|丁目|番地?|号|の|[" + HY + "](?=\\d))*", "g") },
-  { cat: "addr", re: new RegExp(PREF + "(?:[" + KJ + "]{1,6}[市区町村郡]){1,2}", "g") },
+  { cat: "addr", re: new RegExp("(?:" + PREF + "|(?<![ぁ-ん]))" + MUNI + "[市区郡][" + KJ + "ぁ-んァ-ヶー]{0,12}?\\d{1,4}(?:丁目|番地?|[" + HY + "]\\d)(?:\\d|丁目|番地?|号|の|[" + HY + "](?=\\d))*", "g") },
+  { cat: "addr", re: new RegExp(PREF + "(?:" + MUNI + "[市区町村郡]){1,2}", "g") },
   // Names are only recognisable from what surrounds them: an honorific after, or a label before.
   { cat: "name", group: true, name: true, re: new RegExp("([" + KJ + "]{2,5}|[ァ-ヴー]{2,8})(?:さん|様|さま|くん|ちゃん|先生)", "g") },
   // "山田 太郎様": family and given name with a space between (a separate rule, so that a rejected
@@ -466,8 +468,14 @@ const RULES = [
   // A name after a label sits on the label's line; letting it run on into the next line ate "連絡" of "連絡先".
   // The label may be followed by a colon or only by space: forms and record screens put the label in its own
   // column ("名前    河野　祐作"). A space is required when there is no colon, so "名前変更" is left alone.
-  { cat: "name", group: true, name: true, one: true, re: new RegExp(LABEL + "(?: ?[:;・] ?| )(" + NAME_BODY + ")", "g") }
+  { cat: "name", group: true, name: true, one: true, re: new RegExp(LABEL + "(?: ?[:;・] ?| )(" + NAME_BODY + ")", "g") },
+  // "担当の佐藤" "店長は田中": a name without an honorific can't be told from an ordinary word ("担当の営業").
+  // Shown in yellow for the user to decide instead of being blacked out (strict mode hides it).
+  { cat: "name", group: true, name: true, one: true, review: true,
+    re: new RegExp("(?:担当者?|係|窓口|受付|店長|課長|部長|係長|社長|院長|園長|校長|担任|上司)[のは] ?([" + KJ + "]{2,4})(?![" + KJ + "])", "g") }
 ];
+// A number written after one of these is a reference number for the case, not a card or account.
+const reRefNo = new RegExp("(?:[A-Za-z][" + HY + " ]{0,2}|(?:受付|注文|予約|申込|整理|伝票|お?問い?合わ?せ)(?:番号|No\\.?|ID) ?[:;・#]? ?)$");
 // A line holding nothing but such a label: the name is on the line below (kintone's record screen).
 const reLabelCell = new RegExp("(^| )(" + LABEL + ")(?=$| |[:;・])", "g");
 const reLabelLine = new RegExp("^ ?" + LABEL + "(?: ?[:;・])? ?$"), reNameStart = new RegExp("^ ?(" + NAME_BODY + ")");
@@ -489,6 +497,8 @@ function findPII(s, cats, words) {
       if (r.digits) {
         const n = m[0].replace(/\D/g, "").length;
         if (n < r.digits[0] || n > r.digits[1] || isDigit(s[start - 1] || "") || isDigit(s[end] || "")) { r.re.lastIndex = m.index + 1; continue; }
+        // "A-20261118-0427", "受付番号 2026-1118-0427": a reference number, not a card or account number.
+        if (r.cat === "num" && reRefNo.test(s.slice(Math.max(0, start - 12), start))) continue;
       }
       // "住所" on the line above, read as one with the address: the label itself is not the address.
       if (r.cat === "addr") { const lab = /^(?:現?住所|所在地|送付先|届け先|宛先) ?[:;・]? ?/.exec(m[0]); if (lab) start += lab[0].length; }
@@ -496,14 +506,14 @@ function findPII(s, cats, words) {
         if (r.name && NOT_NAME.test(m[1])) continue;
         start = m.index + (r.name && m[0].startsWith(m[1]) ? 0 : m[0].lastIndexOf(m[1])); end = start + m[1].length;
       }
-      found.push({ cat: r.cat, start, end, from: m.index, to: m.index + m[0].length, one: !!r.one });   // from/to: with the label or honorific
+      found.push({ cat: r.cat, start, end, from: m.index, to: m.index + m[0].length, one: !!r.one, review: !!r.review, pri: r.review ? -1 : 0 });   // from/to: with the label or honorific
     }
   }
   const low = s.toLowerCase();
   for (const w of words || []) {
     for (let i = low.indexOf(w); i >= 0; i = low.indexOf(w, i + w.length)) found.push({ cat: "word", start: i, end: i + w.length, from: i, to: i + w.length, pri: 1 });
   }
-  // Overlapping hits: the user's own words win, then the longer one.
+  // Overlapping hits: the user's own words win, review-only guesses lose, then the longer one.
   found.sort((a, b) => (b.pri || 0) - (a.pri || 0) || (b.end - b.start) - (a.end - a.start) || a.start - b.start);
   const keep = [];
   for (const f of found) if (!keep.some(k => f.start < k.end && k.start < f.end)) keep.push(f);
@@ -538,7 +548,7 @@ function findWrapped(strs, cats, words, wraps, below) {
 }
 
 // Replace personal info in plain text with ●, keeping the length. Returns {text, count}.
-function maskText(text, cats, words) {
+function maskText(text, cats, words, strict) {
   const lines = text.split("\n"), norms = [], maps = [];
   lines.forEach(line => {
     let norm = ""; const map = [];
@@ -547,9 +557,9 @@ function maskText(text, cats, words) {
   });
   const ids = new Set();
   const out = findWrapped(norms, cats, words, () => true).map((hits, n) => {
-    if (!hits.length) return lines[n];
+    if (!hits.some(h => !h.review || strict)) return lines[n];
     const a = lines[n].split("");
-    for (const h of hits) { ids.add(h.id); for (let i = maps[n][h.start]; i <= maps[n][h.end - 1]; i++) a[i] = "●"; }
+    for (const h of hits) { if (h.review && !strict) continue; ids.add(h.id); for (let i = maps[n][h.start]; i <= maps[n][h.end - 1]; i++) a[i] = "●"; }
     return a.join("");
   });
   return { text: out.join("\n"), count: ids.size };
@@ -652,7 +662,7 @@ function boxesFor(lines, cats, words, W, H) {
       // Letter boxes hug the ink and are often a little off sideways; cover generously.
       const py = Math.ceil((y1 - y0) * 0.15) + 1, px = Math.ceil((y1 - y0) * 0.35) + 1;
       x0 = Math.max(0, x0 - px); y0 = Math.max(0, y0 - py); x1 = Math.min(W, x1 + px); y1 = Math.min(H, y1 + py);
-      out.push({ cat: hit.cat, x: x0, y: y0, w: x1 - x0, h: y1 - y0, key: li + ":" + x0 + ":" + y0 + ":" + x1 });
+      out.push({ cat: hit.review ? "maybe" : hit.cat, warn: !!hit.review, x: x0, y: y0, w: x1 - x0, h: y1 - y0, key: li + ":" + x0 + ":" + y0 + ":" + x1 });
     }
   });
   return out;
@@ -954,7 +964,10 @@ function renderRedact() {
   el.redactCount.textContent = total ? "黒塗り" + total + "か所" : "";
   const warn = shots.reduce((k, s) => k + pending(s).length, 0);
   $("warnBox").hidden = warn === 0;
-  $("warnMsg").textContent = "⚠ 読み取れなかった行が" + warn + "か所あります（黄色の部分）。端で切れた文字が残っていないか確認してください。";
+  const warnEdge = shots.reduce((k, s) => k + pending(s).filter(a => a.cat === "edge").length, 0), warnName = warn - warnEdge;
+  $("warnMsg").textContent = "⚠ 確認が必要な部分が" + warn + "か所あります（黄色の部分）。"
+    + (warnEdge ? "読み取れなかった行が" + warnEdge + "か所：端で切れた文字が残っていないか確認してください。" : "")
+    + (warnName ? "名前かもしれない言葉が" + warnName + "か所：名前なら押して隠してください。" : "");
 }
 
 async function redacted(s) {
@@ -1001,7 +1014,7 @@ async function exportShots(kind) {
     if (kind === "pdf") files.push(new File([buildPdf(pages)], stem + ".pdf", { type: "application/pdf" }));
     const ok = await deliver(files);
     setStatus(!ok ? "保存をやめました。" : (kind === "pdf" ? "PDF" : "画像") + "を書き出しました（" + shots.length + "枚・黒塗り" + total + "か所）。"
-      + (total ? "" : "黒塗りは1か所もありません。") + (warn ? "読み取れなかった行が" + warn + "か所、隠されずに残っています。" : ""));
+      + (total ? "" : "黒塗りは1か所もありません。") + (warn ? "確認が必要な黄色の部分が" + warn + "か所、隠されずに残っています。" : ""));
   } catch (e) { console.error(e); setStatus("書き出しに失敗しました。" + reason(e), true); }
   finally { el.pdf.disabled = el.imgs.disabled = el.long.disabled = false; }
 }
@@ -1117,7 +1130,7 @@ async function exportLong() {
     const ok = await deliver([file]);
     setStatus(!ok ? "保存をやめました。" : shots.length + "枚をつなげて1枚の画像にしました。"
       + (P.length > 1 ? (joined === P.length - 1 ? "" : "重なりが見つからなかった" + (P.length - 1 - joined) + "か所は、灰色の帯で区切っています（並び順を確かめてください）。") : "")
-      + (k < 1 ? "長いので縮小しています。" : "") + (warn ? "読み取れなかった行が" + warn + "か所、隠されずに残っています。" : ""));
+      + (k < 1 ? "長いので縮小しています。" : "") + (warn ? "確認が必要な黄色の部分が" + warn + "か所、隠されずに残っています。" : ""));
   } catch (e) { console.error(e); setStatus("書き出しに失敗しました。" + reason(e), true); }
   finally { P.forEach(p => p.bmp.close && p.bmp.close()); el.pdf.disabled = el.imgs.disabled = el.long.disabled = false; }
 }
@@ -1147,7 +1160,7 @@ function paintEditor() {
   const on = hidden(s).length, warn = pending(s).length, off = s.auto.length - (on - s.manual.length) - warn;
   el.edHint.textContent = s.status === "wait" || s.status === "run" ? "読み取り中です。終わると自動で黒塗りが入ります。"
     : "黒塗り" + on + "か所" + (off ? "・解除中" + off + "か所" : "") + "。黒い部分を押すと解除、点線を押すと戻せます。"
-      + (warn ? "黄色の" + warn + "か所は読み取れなかった行です。押すと隠せます。" : "")
+      + (warn ? "黄色の" + warn + "か所は確認が必要な部分です（読み取れなかった行や、名前かもしれない言葉）。押すと隠せます。" : "")
       + (adding ? "なぞった範囲が黒塗りになります。" : "");
   el.edAdd.setAttribute("aria-pressed", String(adding)); el.stage.classList.toggle("adding", adding);
 }
@@ -1264,7 +1277,7 @@ el.join.addEventListener("click", () => {
 });
 $("mask").addEventListener("click", () => {
   if (!el.text.value.trim()) return;
-  const r = maskText(el.text.value, cfg.cats, splitWords(cfg.words));
+  const r = maskText(el.text.value, cfg.cats, splitWords(cfg.words), cfg.strict);
   if (!r.count) { setStatus("文章の中に、隠す対象は見つかりませんでした。"); return; }
   undoText = el.text.value; el.text.value = r.text; edited = true; el.undo.hidden = false; fit();
   setStatus(r.count + "か所を伏せ字にしました。");
